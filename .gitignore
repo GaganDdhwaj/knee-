@@ -1,0 +1,6 @@
+__pycache__/
+uploads/
+venv/
+.venv/
+knee_Model.h5
+.DS_Store

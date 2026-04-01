@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Knee Disease Identifier</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <p class="eyebrow">Knee Disease Identifier</p>
+      <h1>Upload one knee X-ray and generate an analysis report.</h1>
+      <p class="intro">
+        This site is analysis-only. It does not bundle or browse dataset images.
+        If you want the source dataset, use
+        <a href="{{ dataset_url }}" target="_blank" rel="noreferrer">the Kaggle dataset link</a>.
+      </p>
+      <a class="dataset-link" href="{{ dataset_url }}" target="_blank" rel="noreferrer">Open Dataset Source</a>
+    </section>
+
+    <section class="analyze-box">
+      <h2>Analyze Knee X-ray</h2>
+      <input id="analyzeFile" type="file" accept=".png,.jpg,.jpeg,.PNG,.JPG,.JPEG" />
+      <div class="action-row">
+        <button id="analyzeBtn" type="button">Analyze Image</button>
+        <button id="downloadPdfBtn" type="button">Download PDF Report</button>
+      </div>
+      <div id="reportPanel" class="report-panel">
+        <div class="report-grid">
+          <div><strong>Prediction:</strong> <span id="predictedClass">-</span></div>
+          <div><strong>Confidence:</strong> <span id="confidenceVal">-</span></div>
+          <div><strong>Severity:</strong> <span id="severityVal">-</span></div>
+          <div><strong>Source:</strong> <span id="sourceVal">-</span></div>
+        </div>
+        <div class="confidence-wrap">
+          <div class="confidence-label"><strong>Confidence Meter</strong> <span id="confidenceBadge">-</span></div>
+          <div class="confidence-track"><div id="confidenceFill" class="confidence-fill"></div></div>
+        </div>
+        <div id="probChart3d" class="chart3d"></div>
+        <div class="chart-row">
+          <div id="probBarChart" class="chart2d"></div>
+          <div id="probPieChart" class="chart2d"></div>
+        </div>
+        <div id="insightPanel" class="insight-panel"></div>
+      </div>
+      <pre id="reportBox">Select an X-ray image to begin.</pre>
+    </section>
+  </main>
+
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
