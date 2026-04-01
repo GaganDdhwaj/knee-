@@ -3,6 +3,10 @@ const analyzeBtnEl = document.getElementById("analyzeBtn");
 const downloadPdfBtnEl = document.getElementById("downloadPdfBtn");
 const reportBoxEl = document.getElementById("reportBox");
 const patientNameEl = document.getElementById("patientName");
+const urgentAlertEl = document.getElementById("urgentAlert");
+const assistantQuestionEl = document.getElementById("assistantQuestion");
+const assistantAskBtnEl = document.getElementById("assistantAskBtn");
+const assistantThreadEl = document.getElementById("assistantThread");
 const uploadZoneEl = document.getElementById("uploadZone");
 const selectedFileMetaEl = document.getElementById("selectedFileMeta");
 const previewWrapEl = document.getElementById("previewWrap");
@@ -20,9 +24,75 @@ const probBarChartEl = document.getElementById("probBarChart");
 const confidenceFillEl = document.getElementById("confidenceFill");
 const confidenceBadgeEl = document.getElementById("confidenceBadge");
 const insightPanelEl = document.getElementById("insightPanel");
+const assistantChipEls = document.querySelectorAll(".assistant-chip");
+const bgVideoEl = document.getElementById("bgVideo");
+const heroCardEls = heroVisualEl ? heroVisualEl.querySelectorAll(".visual-card") : [];
+const heroOrbEls = heroVisualEl ? heroVisualEl.querySelectorAll(".orb") : [];
+const heroGridEl = heroVisualEl ? heroVisualEl.querySelector(".hero-grid-lines") : null;
 
 let latestAnalysis = null;
-const PDF_CHART_COLORS = ["#22c55e", "#f59e0b", "#ef4444"];
+let assistantHistory = [];
+const PDF_CHART_COLORS = ["#66d9d0", "#90aeb6", "#1f2f36"];
+
+if (bgVideoEl && bgVideoEl.parentElement) {
+  bgVideoEl.addEventListener("error", () => {
+    bgVideoEl.parentElement.classList.add("video-missing");
+  });
+  bgVideoEl.addEventListener("loadeddata", () => {
+    bgVideoEl.parentElement.classList.remove("video-missing");
+  });
+}
+
+function getHeroBaseTransform(card) {
+  if (card.classList.contains("primary-depth")) {
+    return "rotateY(-15deg) rotateX(8deg) translateZ(42px)";
+  }
+  if (card.classList.contains("secondary-depth")) {
+    return "rotateY(16deg) rotateX(-6deg) translateZ(20px)";
+  }
+  if (card.classList.contains("data-card")) {
+    return "rotateY(-10deg) rotateX(5deg) translateZ(28px)";
+  }
+  return "";
+}
+
+function applyHeroDepth(offsetX, offsetY) {
+  if (!heroVisualEl) return;
+  heroVisualEl.style.transform =
+    `rotateX(${(-offsetY * 10).toFixed(2)}deg) rotateY(${(offsetX * 14).toFixed(2)}deg)`;
+
+  heroCardEls.forEach((card, index) => {
+    const depth = index === 0 ? 30 : index === 1 ? 18 : 24;
+    const moveX = offsetX * depth;
+    const moveY = offsetY * depth;
+    card.style.transform =
+      `${getHeroBaseTransform(card)} translate3d(${moveX.toFixed(2)}px, ${moveY.toFixed(2)}px, 0)`;
+  });
+
+  heroOrbEls.forEach((orb, index) => {
+    const drift = index === 0 ? 18 : -14;
+    orb.style.transform = `translate3d(${(offsetX * drift).toFixed(2)}px, ${(offsetY * drift).toFixed(2)}px, 0)`;
+  });
+
+  if (heroGridEl) {
+    heroGridEl.style.transform =
+      `rotateX(70deg) translateZ(-40px) translate3d(${(offsetX * 18).toFixed(2)}px, ${(offsetY * 12).toFixed(2)}px, 0)`;
+  }
+}
+
+function resetHeroDepth() {
+  if (!heroVisualEl) return;
+  heroVisualEl.style.transform = "rotateX(0deg) rotateY(0deg)";
+  heroCardEls.forEach((card) => {
+    card.style.transform = "";
+  });
+  heroOrbEls.forEach((orb) => {
+    orb.style.transform = "";
+  });
+  if (heroGridEl) {
+    heroGridEl.style.transform = "";
+  }
+}
 
 function safeSetText(el, value) {
   if (el) el.textContent = value;
@@ -36,9 +106,11 @@ function setStatus(message, tone = "info") {
   if (!statusMessageEl) return;
   statusMessageEl.textContent = message;
   statusMessageEl.style.background =
-    tone === "error" ? "#fef2f2" : tone === "success" ? "#ecfdf5" : "#eff6ff";
+    tone === "error" ? "#301215" : tone === "success" ? "#0f2728" : "#102126";
   statusMessageEl.style.color =
-    tone === "error" ? "#b91c1c" : tone === "success" ? "#047857" : "#1d4ed8";
+    tone === "error" ? "#ffb8bf" : tone === "success" ? "#bafff5" : "#dffbff";
+  statusMessageEl.style.borderColor =
+    tone === "error" ? "rgba(255, 122, 138, 0.28)" : tone === "success" ? "rgba(102, 217, 208, 0.28)" : "rgba(102, 217, 208, 0.18)";
 }
 
 function confidenceBand(conf) {
@@ -97,7 +169,7 @@ function renderChart(report) {
   if (!window.Plotly || !probBarChartEl) return;
   const labels = report.class_probabilities.map((x) => x.class);
   const probs = report.class_probabilities.map((x) => x.probability);
-  const colors = ["#f5f5f5", "#a3a3a3", "#525252"];
+  const colors = ["#66d9d0", "#90aeb6", "#203039"];
 
   Plotly.newPlot(
     probBarChartEl,
@@ -113,15 +185,15 @@ function renderChart(report) {
       title: "Class Confidence",
       paper_bgcolor: "rgba(0,0,0,0)",
       plot_bgcolor: "rgba(0,0,0,0)",
-      font: { color: "#f5f5f5" },
+      font: { color: "#eef8fa" },
       margin: { l: 40, r: 10, b: 40, t: 40 },
-      xaxis: { color: "#d4d4d4" },
+      xaxis: { color: "#b8c7cd" },
       yaxis: {
         title: "Probability (%)",
         range: [0, 100],
-        color: "#d4d4d4",
-        gridcolor: "rgba(255,255,255,0.08)",
-        zerolinecolor: "rgba(255,255,255,0.1)"
+        color: "#b8c7cd",
+        gridcolor: "rgba(102,217,208,0.12)",
+        zerolinecolor: "rgba(102,217,208,0.14)"
       }
     },
     { displayModeBar: false, responsive: true }
@@ -236,6 +308,11 @@ function renderReport(data) {
   safeSetText(confidenceBadgeEl, confidenceBand(data.report.confidence));
   safeSetText(severityValEl, data.report.severity_level);
   safeSetText(sourceValEl, data.report.model_info.inference_source);
+  if (urgentAlertEl) {
+    const urgent = data.report.guidance && data.report.guidance.urgent_banner;
+    urgentAlertEl.hidden = !urgent;
+    safeSetText(urgentAlertEl, urgent || "");
+  }
   renderChart(data.report);
   updateModelMessaging(data.report);
   safeSetText(insightPanelEl, buildImprovements(data.report));
@@ -285,6 +362,70 @@ function renderReport(data) {
   lines.push(`Note: ${data.report.note}`);
   if (data.report.warning) lines.push(`Warning: ${data.report.warning}`);
   safeSetText(reportBoxEl, lines.join("\n"));
+  assistantHistory = [];
+  if (assistantThreadEl) {
+    assistantThreadEl.innerHTML = "";
+    appendAssistantMessage("Analysis loaded. Ask a question about the report.");
+  }
+}
+
+function appendChatMessage(role, text) {
+  if (!assistantThreadEl) return;
+  const node = document.createElement("div");
+  node.className = `assistant-msg ${role}`;
+  node.textContent = text;
+  assistantThreadEl.appendChild(node);
+  assistantThreadEl.scrollTop = assistantThreadEl.scrollHeight;
+}
+
+function appendAssistantMessage(text) {
+  appendChatMessage("assistant", text);
+}
+
+function appendUserMessage(text) {
+  appendChatMessage("user", text);
+}
+
+async function askAssistant(question) {
+  if (!latestAnalysis) {
+    appendAssistantMessage("Run an analysis first so the assistant can answer from the current report.");
+    return;
+  }
+  const trimmed = (question || "").trim();
+  if (!trimmed) {
+    appendAssistantMessage("Ask me about meaning, doctor type, tests, food, urgent care, or next steps.");
+    return;
+  }
+
+  appendUserMessage(trimmed);
+  assistantHistory.push({ role: "user", content: trimmed });
+  appendAssistantMessage("Thinking...");
+
+  try {
+    const res = await fetch("/api/assistant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        report: latestAnalysis,
+        question: trimmed,
+        history: assistantHistory
+      })
+    });
+    const data = await res.json();
+    if (!data || !data.ok) {
+      throw new Error(data && data.error ? data.error : "Assistant request failed");
+    }
+    if (assistantThreadEl) {
+      assistantThreadEl.lastElementChild.remove();
+    }
+    assistantHistory.push({ role: "assistant", content: data.reply });
+    appendAssistantMessage(data.reply);
+  } catch (err) {
+    if (assistantThreadEl && assistantThreadEl.lastElementChild) {
+      assistantThreadEl.lastElementChild.remove();
+    }
+    appendAssistantMessage(`Assistant error: ${String(err)}`);
+  }
 }
 
 async function downloadPdfReport() {
@@ -524,12 +665,38 @@ if (heroVisualEl) {
     const rect = heroVisualEl.getBoundingClientRect();
     const offsetX = (event.clientX - rect.left) / rect.width - 0.5;
     const offsetY = (event.clientY - rect.top) / rect.height - 0.5;
-    heroVisualEl.style.transform =
-      `rotateX(${(-offsetY * 10).toFixed(2)}deg) rotateY(${(offsetX * 14).toFixed(2)}deg)`;
+    applyHeroDepth(offsetX, offsetY);
   });
 
   heroVisualEl.addEventListener("mouseleave", () => {
-    heroVisualEl.style.transform = "rotateX(0deg) rotateY(0deg)";
+    resetHeroDepth();
+  });
+}
+
+assistantChipEls.forEach((chip) => {
+  chip.addEventListener("click", () => {
+    const question = chip.getAttribute("data-question") || "";
+    if (assistantQuestionEl) assistantQuestionEl.value = question;
+    askAssistant(question);
+  });
+});
+
+if (assistantAskBtnEl) {
+  assistantAskBtnEl.addEventListener("click", () => {
+    const question = assistantQuestionEl ? assistantQuestionEl.value : "";
+    askAssistant(question);
+    if (assistantQuestionEl) assistantQuestionEl.value = "";
+  });
+}
+
+if (assistantQuestionEl) {
+  assistantQuestionEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const question = assistantQuestionEl.value;
+      askAssistant(question);
+      assistantQuestionEl.value = "";
+    }
   });
 }
 

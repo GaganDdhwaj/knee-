@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Knee Disease Identifier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2" />
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon.png') }}?v=2" />
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}?v=2" />
@@ -11,43 +14,82 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
+  <div class="page-background" aria-hidden="true">
+    <video class="bg-video" id="bgVideo" autoplay muted loop playsinline>
+      <source src="{{ url_for('static', filename='bg-video.mp4') }}" type="video/mp4" />
+    </video>
+  </div>
   <main class="page">
     <section class="hero-shell">
       <nav class="topbar">
-        <div class="brand-mark">KDI</div>
+        <div class="brand-lockup">
+          <div class="brand-mark">KDI</div>
+          <div class="brand-copy">
+            <strong>Knee Disease Identifier</strong>
+            <span>AI-assisted knee X-ray screening</span>
+          </div>
+        </div>
         <div class="topbar-links">
           <a href="#analyzer">Analyzer</a>
           <a href="#workflow">Workflow</a>
+          <a href="#assistant">Assistant</a>
           <a href="{{ dataset_url }}" target="_blank" rel="noreferrer">Dataset</a>
         </div>
       </nav>
 
       <section class="hero">
         <div class="hero-copy">
+          <div class="status-pill">Clinical screening workflow · AI-guided follow-up</div>
           <p class="eyebrow">Knee Disease Identifier</p>
-          <h1>Professional knee X-ray screening with a sharper, faster review flow.</h1>
+          <h1>Clinical-grade <span class="accent-text">screening experience</span> with a <span class="accent-text accent-text-alt">sharper AI workflow</span>.</h1>
           <p class="intro">
-            Upload a single knee X-ray, review confidence distribution, export a report,
-            and keep the experience focused on analysis rather than dataset browsing.
+            Upload a knee X-ray, review class confidence, export a formal PDF report,
+            and ask follow-up questions in a medical-style AI assistant that stays grounded in the current result.
           </p>
+          <div class="made-by">Made by GaganDdhwaj</div>
           <div class="hero-actions">
+            <a class="primary-cta" href="#analyzer">Start Analysis</a>
             <a class="dataset-link" href="{{ dataset_url }}" target="_blank" rel="noreferrer">Open Dataset Source</a>
-            <div class="formats">Accepted formats: PNG, JPG, JPEG</div>
+          </div>
+          <div class="hero-meta">
+            <div class="hero-meta-card">
+              <span>Accepted files</span>
+              <strong>PNG, JPG, JPEG</strong>
+            </div>
+            <div class="hero-meta-card">
+              <span>Assistant mode</span>
+              <strong>Gemini-backed report chat</strong>
+            </div>
+            <div class="hero-meta-card">
+              <span>Output</span>
+              <strong>Medical-style PDF summary</strong>
+            </div>
           </div>
         </div>
 
         <div class="hero-visual" id="heroVisual">
           <div class="orb orb-a"></div>
           <div class="orb orb-b"></div>
-          <div class="visual-card primary-depth">
+          <div class="hero-grid-lines"></div>
+          <div class="visual-card primary-depth monitor-card">
             <span class="visual-label">Live Screening</span>
-            <strong>Knee Disease Identifier</strong>
-            <p>Upload, classify, and export a cleaner clinical summary.</p>
+            <strong>Diagnostic Command Deck</strong>
+            <p>Upload, classify, review risk guidance, and export a cleaner report in one place.</p>
+            <div class="monitor-bars">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
           </div>
           <div class="visual-card secondary-depth">
             <span class="visual-label">Model Signal</span>
             <strong>Confidence Mapping</strong>
-            <p>Focused result view with severity, confidence, and mode status.</p>
+            <p>Focused result view with severity, urgency, and doctor guidance.</p>
+          </div>
+          <div class="visual-card data-card">
+            <span class="visual-label">AI Assistant</span>
+            <strong>One-to-one report chat</strong>
+            <p>Ask what the result means, who to visit, what to eat, and when to seek urgent care.</p>
           </div>
           <div class="depth-grid"></div>
         </div>
@@ -56,35 +98,48 @@
 
     <section class="metrics-strip">
       <article class="metric-card">
-        <span class="metric-value">1</span>
-        <span class="metric-label">Image per analysis</span>
+        <span class="metric-value">01</span>
+        <span class="metric-label">Image per session</span>
       </article>
       <article class="metric-card">
-        <span class="metric-value">3</span>
+        <span class="metric-value">03</span>
         <span class="metric-label">Prediction classes</span>
       </article>
       <article class="metric-card">
         <span class="metric-value">PDF</span>
-        <span class="metric-label">Instant export</span>
+        <span class="metric-label">Formal report export</span>
       </article>
       <article class="metric-card">
-        <span class="metric-value">Live</span>
-        <span class="metric-label">Interactive review</span>
+        <span class="metric-value">AI</span>
+        <span class="metric-label">Live report conversation</span>
       </article>
     </section>
 
     <section class="info-strip">
       <article class="info-card">
-        <h2>How It Works</h2>
-        <p>Upload one knee X-ray, run screening, then review predicted class, confidence, severity, and guidance for follow-up.</p>
+        <h2>Review Flow</h2>
+        <p>Upload one knee X-ray, run screening, and review prediction, severity, confidence, and follow-up guidance in a single dashboard.</p>
       </article>
       <article class="info-card">
-        <h2>Model Status</h2>
+        <h2>Inference Status</h2>
         <p id="modelStatus">No analysis yet. The app will clearly show whether it used a trained model or the built-in demo fallback.</p>
       </article>
       <article class="info-card caution">
-        <h2>Medical Notice</h2>
-        <p>This tool is for screening support only. It is not a diagnosis and must not replace clinician review.</p>
+        <h2>Clinical Guardrail</h2>
+        <p>This tool supports screening and follow-up discussion only. It is not a diagnosis and does not replace clinician review.</p>
+      </article>
+    </section>
+
+    <section class="ai-spotlight">
+      <article class="ai-spotlight-card primary">
+        <p class="eyebrow">AI Assistant</p>
+        <h2>Ask focused questions about the current screening result.</h2>
+        <p>The assistant reads the active report context and answers questions about meaning, doctor type, tests, diet, and urgent care signs.</p>
+      </article>
+      <article class="ai-spotlight-card">
+        <p class="eyebrow">AI Learning Pipeline</p>
+        <h2>Future accuracy improves only from verified labeled data.</h2>
+        <p>New uploads can support future model training only when they are reviewed and labeled correctly. The app does not silently self-train from unknown images.</p>
       </article>
     </section>
 
@@ -145,6 +200,7 @@
       <div id="statusMessage" class="status-message">Ready for upload.</div>
 
       <div id="reportPanel" class="report-panel">
+        <div id="urgentAlert" class="urgent-alert" hidden></div>
         <div class="report-grid">
           <div><strong>Prediction:</strong> <span id="predictedClass">-</span></div>
           <div><strong>Confidence:</strong> <span id="confidenceVal">-</span></div>
@@ -167,6 +223,62 @@
         <div id="insightPanel" class="insight-panel"></div>
       </div>
       <pre id="reportBox">Select an X-ray image to begin.</pre>
+    </section>
+
+    <section class="assistant-panel" id="assistant">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">AI Assistant</p>
+          <h2>Talk To The Screening Assistant</h2>
+        </div>
+        <div class="section-note">One-to-one report conversation</div>
+      </div>
+      <div class="assistant-highlight">Ask natural questions about the current result and get a grounded reply from the active report context.</div>
+      <div class="assistant-actions">
+        <button type="button" class="assistant-chip" data-question="What does this result mean?">What does this mean?</button>
+        <button type="button" class="assistant-chip" data-question="Which doctor should I visit?">Which doctor?</button>
+        <button type="button" class="assistant-chip" data-question="What foods should I focus on?">Foods to focus on</button>
+        <button type="button" class="assistant-chip" data-question="When should I get urgent care?">Urgent care signs</button>
+      </div>
+      <div id="assistantThread" class="assistant-thread">
+        <div class="assistant-msg assistant">Run an analysis first, then ask a question about the report.</div>
+      </div>
+      <div class="assistant-composer">
+        <label class="assistant-field" for="assistantQuestion">
+          <span>Your question</span>
+          <input id="assistantQuestion" type="text" placeholder="Ask about this analysis result" />
+        </label>
+        <div class="action-row">
+          <button id="assistantAskBtn" type="button">Send</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="learning-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Model Growth</p>
+          <h2>How This AI Can Improve Responsibly</h2>
+        </div>
+        <div class="section-note">Verified data, not automatic guesses</div>
+      </div>
+      <div class="workflow-strip learning-grid">
+        <article class="workflow-card">
+          <span>01</span>
+          <h3>Collect</h3>
+          <p>Store new uploaded images only with consent and keep them separate from production predictions.</p>
+        </article>
+        <article class="workflow-card">
+          <span>02</span>
+          <h3>Verify</h3>
+          <p>Attach clinician-reviewed labels so the training set has trusted ground truth instead of guessed outcomes.</p>
+        </article>
+        <article class="workflow-card">
+          <span>03</span>
+          <h3>Retrain</h3>
+          <p>Retrain offline, measure accuracy and F1 on held-out data, then deploy only if the new model is truly better.</p>
+        </article>
+      </div>
     </section>
   </main>
 

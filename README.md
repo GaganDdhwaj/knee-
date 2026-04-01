@@ -28,3 +28,14 @@ gunicorn app:app
 
 To use your trained model, put `knee_Model.h5` in this folder and install TensorFlow.
 Without it, the app falls back to a lightweight built-in statistical model for demo analysis.
+
+## Gemini assistant setup
+
+To enable the homepage AI chat with Gemini, set an environment variable before starting the app:
+
+```bash
+export GEMINI_API_KEY="your-key-here"
+python3 app.py
+```
+
+For Render, add `GEMINI_API_KEY` in the service environment variables instead of storing it in the repo.

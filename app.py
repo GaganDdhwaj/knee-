@@ -1,7 +1,10 @@
 import os
+import json
 import time
 import traceback
 from pathlib import Path
+from typing import Dict
+from urllib import error, request as urllib_request
 
 import numpy as np
 from flask import Flask, jsonify, render_template, request, send_from_directory
@@ -13,6 +16,7 @@ ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"}
 CLASS_NAMES = ["Normal", "Osteopenia", "Osteoporosis"]
 IMG_SIZE = (224, 224)
 DATASET_URL = "https://www.kaggle.com/datasets/mohamedgobara/multi-class-knee-osteoporosis-x-ray-dataset"
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 app = Flask(__name__)
 _MODEL = None
@@ -134,6 +138,185 @@ def _build_guidance(predicted_class: str, confidence: float, source: str):
 
     guidance.update(base)
     return guidance
+
+
+def _assistant_reply(report: Dict, question: str, history=None) -> str:
+    history = history or []
+    q = (question or "").strip().lower()
+    guidance = report.get("guidance", {})
+    predicted_class = report.get("predicted_class", "Unknown")
+    confidence = report.get("confidence", 0)
+    severity = report.get("severity_level", "Unknown")
+
+    if not q:
+        return (
+            "Ask me about what this result means, which doctor to visit, which tests to discuss, "
+            "urgent warning signs, foods to focus on, or next steps."
+        )
+
+    if any(word in q for word in ["hello", "hi", "hey"]):
+        return (
+            f"I’m looking at a report that predicts {predicted_class} with {confidence}% confidence. "
+            "Ask me about meaning, doctor type, tests, food, urgent signs, or next steps."
+        )
+
+    if any(word in q for word in ["meaning", "mean", "result", "summary", "what is this"]):
+        parts = [
+            f"This screening result is closer to {predicted_class}.",
+            f"Severity is marked as {severity} and confidence is {confidence}%.",
+            guidance.get("summary", ""),
+            guidance.get("confidence_note", ""),
+            guidance.get("model_note", ""),
+        ]
+        return " ".join(part for part in parts if part)
+
+    if any(word in q for word in ["doctor", "specialist", "visit", "consult"]):
+        doctors = guidance.get("doctor_to_visit") or ["Start with a primary care clinician."]
+        return "Doctor recommendation:\n" + "\n".join(f"- {item}" for item in doctors)
+
+    if any(word in q for word in ["test", "scan", "dexa", "exam", "investigation"]):
+        tests = guidance.get("tests_to_discuss") or ["Discuss appropriate testing with a clinician."]
+        return "Tests to discuss:\n" + "\n".join(f"- {item}" for item in tests)
+
+    if any(word in q for word in ["food", "eat", "diet", "nutrition"]):
+        foods = guidance.get("foods_to_eat") or ["No diet guidance is available for this report."]
+        return "Food guidance:\n" + "\n".join(f"- {item}" for item in foods)
+
+    if any(word in q for word in ["exercise", "habit", "walk", "activity"]):
+        habits = guidance.get("habits") or ["No habit guidance is available for this report."]
+        return "Lifestyle guidance:\n" + "\n".join(f"- {item}" for item in habits)
+
+    if any(word in q for word in ["urgent", "fracture", "emergency", "immediately", "danger"]):
+        urgent = guidance.get("urgent_banner")
+        seek = guidance.get("when_to_seek_care") or []
+        lines = []
+        if urgent:
+            lines.append(f"URGENT: {urgent}")
+        else:
+            lines.append("This report does not trigger a dedicated urgent banner on its own.")
+        if seek:
+            lines.append("")
+            lines.append("Seek care if:")
+            lines.extend(f"- {item}" for item in seek)
+        return "\n".join(lines)
+
+    if any(word in q for word in ["next", "do now", "what should i do", "plan"]):
+        steps = guidance.get("next_steps") or ["Discuss the result with a clinician."]
+        disclaimer = guidance.get("disclaimer") or report.get("note", "")
+        return (
+            "Suggested next steps:\n"
+            + "\n".join(f"- {item}" for item in steps)
+            + (f"\n\nReminder: {disclaimer}" if disclaimer else "")
+        )
+
+    if any(word in q for word in ["perfect", "accurate", "reliable", "trust"]):
+        return (
+            "This is a screening-support tool, not a perfect diagnostic system. "
+            "Its output should be checked against clinical assessment, especially when symptoms are significant "
+            "or the model is using fallback/demo mode."
+        )
+
+    if history:
+        last_user = next((item.get("content", "") for item in reversed(history) if item.get("role") == "user"), "")
+        return (
+            f"I’m answering from the current report context. Your last question was: '{last_user}'. "
+            f"For this case, the report predicts {predicted_class} at {confidence}% confidence. "
+            "Ask me directly about doctor type, tests, food, urgent care, or next steps and I’ll answer specifically."
+        )
+
+    return (
+        f"This report predicts {predicted_class} at {confidence}% confidence. "
+        "Ask me something specific such as which doctor to visit, what tests to discuss, "
+        "what foods to focus on, or when to seek urgent care."
+    )
+
+
+def _assistant_prompt(report: Dict, question: str, history=None) -> str:
+    history = history or []
+    history_lines = []
+    for item in history[-6:]:
+        role = item.get("role", "user")
+        content = item.get("content", "")
+        if content:
+            history_lines.append(f"{role.title()}: {content}")
+
+    guidance = report.get("guidance", {})
+    prompt = {
+        "role": (
+            "You are a screening-support AI assistant for a knee X-ray website. "
+            "Answer naturally and conversationally, but do not claim to diagnose, prescribe, "
+            "or replace a doctor. Stay grounded in the provided report only."
+        ),
+        "rules": [
+            "Be direct, helpful, and short-to-medium length.",
+            "If urgent symptoms are mentioned or the report has urgent guidance, say that urgent medical care may be needed.",
+            "Mention doctor type or tests only if supported by the report guidance.",
+            "Do not invent accuracy claims or say the tool is perfect.",
+            "Remind the user this is screening support, not a diagnosis, when relevant."
+        ],
+        "report": {
+            "predicted_class": report.get("predicted_class"),
+            "confidence": report.get("confidence"),
+            "severity_level": report.get("severity_level"),
+            "source": report.get("model_info", {}).get("inference_source"),
+            "guidance": guidance,
+            "warning": report.get("warning"),
+            "note": report.get("note"),
+        },
+        "recent_conversation": history_lines,
+        "user_question": question,
+    }
+    return json.dumps(prompt, ensure_ascii=True)
+
+
+def _normalize_assistant_text(text: str) -> str:
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+    return cleaned.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _gemini_reply(report: Dict, question: str, history=None) -> str:
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("Missing GEMINI_API_KEY")
+
+    prompt = _assistant_prompt(report, question, history)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.3,
+            "topP": 0.9,
+            "maxOutputTokens": 400,
+        },
+    }
+    req = urllib_request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        },
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Gemini HTTP {exc.code}: {detail[:300]}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Gemini request failed: {exc}") from exc
+
+    candidates = body.get("candidates") or []
+    if not candidates:
+        raise RuntimeError("Gemini returned no candidates")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text = "".join(part.get("text", "") for part in parts).strip()
+    if not text:
+        raise RuntimeError("Gemini returned empty text")
+    return _normalize_assistant_text(text)
 
 
 def _load_model():
@@ -290,6 +473,26 @@ def analyze():
                 },
             }
         ), 500
+
+
+@app.route("/api/assistant", methods=["POST"])
+def assistant():
+    payload = request.get_json(silent=True) or {}
+    report = payload.get("report")
+    question = payload.get("question", "")
+    history = payload.get("history", [])
+
+    if not report:
+        return jsonify({"ok": False, "error": "No report context provided."}), 400
+
+    source = "local_fallback"
+    try:
+        reply = _gemini_reply(report, question, history)
+        source = "gemini"
+    except Exception:
+        reply = _assistant_reply(report, question, history)
+
+    return jsonify({"ok": True, "reply": _normalize_assistant_text(reply), "source": source})
 
 
 if __name__ == "__main__":
