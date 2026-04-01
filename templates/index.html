@@ -8,24 +8,138 @@
 </head>
 <body>
   <main class="page">
-    <section class="hero">
-      <p class="eyebrow">Knee Disease Identifier</p>
-      <h1>Upload one knee X-ray and generate an analysis report.</h1>
-      <p class="intro">
-        This site is analysis-only. It does not bundle or browse dataset images.
-        If you want the source dataset, use
-        <a href="{{ dataset_url }}" target="_blank" rel="noreferrer">the Kaggle dataset link</a>.
-      </p>
-      <a class="dataset-link" href="{{ dataset_url }}" target="_blank" rel="noreferrer">Open Dataset Source</a>
+    <section class="hero-shell">
+      <nav class="topbar">
+        <div class="brand-mark">KDI</div>
+        <div class="topbar-links">
+          <a href="#analyzer">Analyzer</a>
+          <a href="#workflow">Workflow</a>
+          <a href="{{ dataset_url }}" target="_blank" rel="noreferrer">Dataset</a>
+        </div>
+      </nav>
+
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Knee Disease Identifier</p>
+          <h1>Professional knee X-ray screening with a sharper, faster review flow.</h1>
+          <p class="intro">
+            Upload a single knee X-ray, review confidence distribution, export a report,
+            and keep the experience focused on analysis rather than dataset browsing.
+          </p>
+          <div class="hero-actions">
+            <a class="dataset-link" href="{{ dataset_url }}" target="_blank" rel="noreferrer">Open Dataset Source</a>
+            <div class="formats">Accepted formats: PNG, JPG, JPEG</div>
+          </div>
+        </div>
+
+        <div class="hero-visual" id="heroVisual">
+          <div class="orb orb-a"></div>
+          <div class="orb orb-b"></div>
+          <div class="visual-card primary-depth">
+            <span class="visual-label">Live Screening</span>
+            <strong>Knee Disease Identifier</strong>
+            <p>Upload, classify, and export a cleaner clinical summary.</p>
+          </div>
+          <div class="visual-card secondary-depth">
+            <span class="visual-label">Model Signal</span>
+            <strong>Confidence Mapping</strong>
+            <p>Focused result view with severity, confidence, and mode status.</p>
+          </div>
+          <div class="depth-grid"></div>
+        </div>
+      </section>
     </section>
 
-    <section class="analyze-box">
-      <h2>Analyze Knee X-ray</h2>
-      <input id="analyzeFile" type="file" accept=".png,.jpg,.jpeg,.PNG,.JPG,.JPEG" />
+    <section class="metrics-strip">
+      <article class="metric-card">
+        <span class="metric-value">1</span>
+        <span class="metric-label">Image per analysis</span>
+      </article>
+      <article class="metric-card">
+        <span class="metric-value">3</span>
+        <span class="metric-label">Prediction classes</span>
+      </article>
+      <article class="metric-card">
+        <span class="metric-value">PDF</span>
+        <span class="metric-label">Instant export</span>
+      </article>
+      <article class="metric-card">
+        <span class="metric-value">Live</span>
+        <span class="metric-label">Interactive review</span>
+      </article>
+    </section>
+
+    <section class="info-strip">
+      <article class="info-card">
+        <h2>How It Works</h2>
+        <p>Upload one knee X-ray, run screening, then review predicted class, confidence, severity, and guidance for follow-up.</p>
+      </article>
+      <article class="info-card">
+        <h2>Model Status</h2>
+        <p id="modelStatus">No analysis yet. The app will clearly show whether it used a trained model or the built-in demo fallback.</p>
+      </article>
+      <article class="info-card caution">
+        <h2>Medical Notice</h2>
+        <p>This tool is for screening support only. It is not a diagnosis and must not replace clinician review.</p>
+      </article>
+    </section>
+
+    <section class="workflow-strip" id="workflow">
+      <article class="workflow-card">
+        <span>01</span>
+        <h3>Upload</h3>
+        <p>Bring one clear knee X-ray with minimal blur and balanced lighting.</p>
+      </article>
+      <article class="workflow-card">
+        <span>02</span>
+        <h3>Analyze</h3>
+        <p>Run the classification flow and inspect confidence and severity output.</p>
+      </article>
+      <article class="workflow-card">
+        <span>03</span>
+        <h3>Export</h3>
+        <p>Download a PDF summary for sharing or record keeping.</p>
+      </article>
+    </section>
+
+    <section class="analyze-box" id="analyzer">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Analysis Console</p>
+          <h2>Analyze Knee X-ray</h2>
+        </div>
+        <div class="section-note">Focused, upload-first workflow</div>
+      </div>
+
+      <label id="uploadZone" class="upload-zone" for="analyzeFile">
+        <input id="analyzeFile" type="file" accept=".png,.jpg,.jpeg,.PNG,.JPG,.JPEG" />
+        <span class="upload-title">Drop an image here or click to browse</span>
+        <span class="upload-subtitle">Use one clear knee X-ray image for the best result.</span>
+      </label>
+
+      <div class="file-row">
+        <div id="selectedFileMeta" class="selected-file">No file selected.</div>
+        <div class="selected-file-hint">Best experience: frontal or well-centered diagnostic image.</div>
+      </div>
+
+      <div class="signature-row">
+        <label class="signature-field" for="patientName">
+          <span>Name for PDF signature</span>
+          <input id="patientName" type="text" placeholder="Enter name for final signature" />
+        </label>
+      </div>
+
+      <div id="previewWrap" class="preview-wrap" hidden>
+        <img id="previewImage" class="preview-image" alt="Selected X-ray preview" />
+      </div>
+
       <div class="action-row">
         <button id="analyzeBtn" type="button">Analyze Image</button>
         <button id="downloadPdfBtn" type="button">Download PDF Report</button>
       </div>
+
+      <div id="statusMessage" class="status-message">Ready for upload.</div>
+
       <div id="reportPanel" class="report-panel">
         <div class="report-grid">
           <div><strong>Prediction:</strong> <span id="predictedClass">-</span></div>
@@ -37,10 +151,14 @@
           <div class="confidence-label"><strong>Confidence Meter</strong> <span id="confidenceBadge">-</span></div>
           <div class="confidence-track"><div id="confidenceFill" class="confidence-fill"></div></div>
         </div>
-        <div id="probChart3d" class="chart3d"></div>
         <div class="chart-row">
           <div id="probBarChart" class="chart2d"></div>
-          <div id="probPieChart" class="chart2d"></div>
+          <div class="summary-card">
+            <h3>Confidence Summary</h3>
+            <p id="confidenceSummary">Run an analysis to see confidence details and output quality notes.</p>
+            <h3>Output Mode</h3>
+            <p id="modeSummary">Waiting for upload.</p>
+          </div>
         </div>
         <div id="insightPanel" class="insight-panel"></div>
       </div>

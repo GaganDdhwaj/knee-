@@ -2,18 +2,27 @@ const analyzeFileEl = document.getElementById("analyzeFile");
 const analyzeBtnEl = document.getElementById("analyzeBtn");
 const downloadPdfBtnEl = document.getElementById("downloadPdfBtn");
 const reportBoxEl = document.getElementById("reportBox");
+const patientNameEl = document.getElementById("patientName");
+const uploadZoneEl = document.getElementById("uploadZone");
+const selectedFileMetaEl = document.getElementById("selectedFileMeta");
+const previewWrapEl = document.getElementById("previewWrap");
+const previewImageEl = document.getElementById("previewImage");
+const statusMessageEl = document.getElementById("statusMessage");
+const modelStatusEl = document.getElementById("modelStatus");
+const confidenceSummaryEl = document.getElementById("confidenceSummary");
+const modeSummaryEl = document.getElementById("modeSummary");
+const heroVisualEl = document.getElementById("heroVisual");
 const predictedClassEl = document.getElementById("predictedClass");
 const confidenceValEl = document.getElementById("confidenceVal");
 const severityValEl = document.getElementById("severityVal");
 const sourceValEl = document.getElementById("sourceVal");
-const probChart3dEl = document.getElementById("probChart3d");
 const probBarChartEl = document.getElementById("probBarChart");
-const probPieChartEl = document.getElementById("probPieChart");
 const confidenceFillEl = document.getElementById("confidenceFill");
 const confidenceBadgeEl = document.getElementById("confidenceBadge");
 const insightPanelEl = document.getElementById("insightPanel");
 
 let latestAnalysis = null;
+const PDF_CHART_COLORS = ["#22c55e", "#f59e0b", "#ef4444"];
 
 function safeSetText(el, value) {
   if (el) el.textContent = value;
@@ -21,6 +30,15 @@ function safeSetText(el, value) {
 
 function safeSetWidth(el, value) {
   if (el) el.style.width = value;
+}
+
+function setStatus(message, tone = "info") {
+  if (!statusMessageEl) return;
+  statusMessageEl.textContent = message;
+  statusMessageEl.style.background =
+    tone === "error" ? "#fef2f2" : tone === "success" ? "#ecfdf5" : "#eff6ff";
+  statusMessageEl.style.color =
+    tone === "error" ? "#b91c1c" : tone === "success" ? "#047857" : "#1d4ed8";
 }
 
 function confidenceBand(conf) {
@@ -34,108 +52,180 @@ function buildImprovements(report, focusClass) {
   const pred = report.predicted_class;
   const conf = report.confidence;
   const cls = focusClass || pred;
+  const guidance = report.guidance || {};
   const lines = [];
   lines.push(`Focused Class Insight: ${cls}`);
   lines.push("");
-  if (conf < 65) {
-    lines.push("- Confidence is moderate or low. Improve image quality and reduce blur.");
-    lines.push("- Retake the X-ray consistently and avoid crop artifacts.");
-    lines.push("- Use clinical context and confirm with a qualified clinician.");
-  } else {
-    lines.push("- Confidence is relatively strong for this sample.");
-    lines.push("- Validate with follow-up review and clinical assessment.");
+  if (guidance.summary) {
+    lines.push(guidance.summary);
+    lines.push("");
+  }
+  if (guidance.confidence_note) {
+    lines.push(`Confidence note: ${guidance.confidence_note}`);
+  } else if (conf < 65) {
+    lines.push("Confidence note: confidence is moderate or low, so image quality and clinical review matter more.");
+  }
+  if (guidance.model_note) {
+    lines.push(`Model note: ${guidance.model_note}`);
   }
   lines.push("");
-  if (cls === "Normal") {
-    lines.push("Suggested next actions:");
-    lines.push("- Maintain routine screening and bone-health habits.");
-  } else if (cls === "Osteopenia") {
-    lines.push("Suggested next actions:");
-    lines.push("- Discuss monitoring, nutrition, and exercise planning.");
-  } else if (cls === "Osteoporosis") {
-    lines.push("Suggested next actions:");
-    lines.push("- Prioritize specialist follow-up and fracture-risk review.");
+  if (guidance.foods_to_eat && guidance.foods_to_eat.length) {
+    lines.push("Foods to focus on:");
+    guidance.foods_to_eat.forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
   }
-  lines.push("");
-  lines.push("Note: AI output is a screening aid, not a diagnosis.");
+  if (guidance.habits && guidance.habits.length) {
+    lines.push("Habits to focus on:");
+    guidance.habits.forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
+  }
+  if (guidance.next_steps && guidance.next_steps.length) {
+    lines.push("Suggested next steps:");
+    guidance.next_steps.forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
+  }
+  if (guidance.when_to_seek_care && guidance.when_to_seek_care.length) {
+    lines.push("Seek medical care if:");
+    guidance.when_to_seek_care.forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
+  }
+  lines.push(`Note: ${guidance.disclaimer || "AI output is a screening aid, not a diagnosis."}`);
   return lines.join("\n");
 }
 
-function render3dChart(report) {
-  if (!probChart3dEl || !window.Plotly) return;
+function renderChart(report) {
+  if (!window.Plotly || !probBarChartEl) return;
   const labels = report.class_probabilities.map((x) => x.class);
   const probs = report.class_probabilities.map((x) => x.probability);
-  const trace = { x: labels, y: labels.map(() => "Probability"), z: probs, type: "bar3d", opacity: 0.95 };
-  const layout = {
-    title: "3D Class Probability Chart",
-    margin: { l: 0, r: 0, b: 20, t: 40 },
-    scene: {
-      xaxis: { title: "Class" },
-      yaxis: { title: "" },
-      zaxis: { title: "Probability (%)", range: [0, 100] }
-    }
-  };
+  const colors = ["#f5f5f5", "#a3a3a3", "#525252"];
+
+  Plotly.newPlot(
+    probBarChartEl,
+    [{
+      x: labels,
+      y: probs,
+      type: "bar",
+      marker: { color: colors },
+      text: probs.map((p) => `${p}%`),
+      textposition: "outside"
+    }],
+    {
+      title: "Class Confidence",
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      font: { color: "#f5f5f5" },
+      margin: { l: 40, r: 10, b: 40, t: 40 },
+      xaxis: { color: "#d4d4d4" },
+      yaxis: {
+        title: "Probability (%)",
+        range: [0, 100],
+        color: "#d4d4d4",
+        gridcolor: "rgba(255,255,255,0.08)",
+        zerolinecolor: "rgba(255,255,255,0.1)"
+      }
+    },
+    { displayModeBar: false, responsive: true }
+  );
+
+  probBarChartEl.on("plotly_click", (e) => {
+    const cls = e?.points?.[0]?.x;
+    safeSetText(insightPanelEl, buildImprovements(report, cls));
+  });
+}
+
+async function buildPdfChartImage(report) {
+  if (!window.Plotly) return null;
+  const exportNode = document.createElement("div");
+  exportNode.style.position = "fixed";
+  exportNode.style.left = "-99999px";
+  exportNode.style.top = "0";
+  exportNode.style.width = "900px";
+  exportNode.style.height = "420px";
+  document.body.appendChild(exportNode);
 
   try {
-    Plotly.newPlot(probChart3dEl, [trace], layout, { displayModeBar: false, responsive: true });
-  } catch (_err) {
-    Plotly.newPlot(
-      probChart3dEl,
+    const labels = report.class_probabilities.map((x) => x.class);
+    const probs = report.class_probabilities.map((x) => x.probability);
+    await Plotly.newPlot(
+      exportNode,
       [{
         x: labels,
-        y: labels.map(() => 1),
-        z: probs,
-        type: "scatter3d",
-        mode: "markers+text",
+        y: probs,
+        type: "bar",
+        marker: { color: PDF_CHART_COLORS },
         text: probs.map((p) => `${p}%`),
-        marker: { size: 8, color: probs, colorscale: "Viridis" }
+        textposition: "outside"
       }],
-      layout,
-      { displayModeBar: false, responsive: true }
+      {
+        title: { text: "Class Confidence", font: { family: "Times New Roman, serif", size: 22, color: "#111111" } },
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
+        font: { family: "Times New Roman, serif", size: 14, color: "#111111" },
+        margin: { l: 70, r: 30, b: 60, t: 70 },
+        xaxis: { color: "#111111" },
+        yaxis: {
+          title: "Probability (%)",
+          range: [0, 100],
+          color: "#111111",
+          gridcolor: "rgba(0,0,0,0.10)",
+          zerolinecolor: "rgba(0,0,0,0.15)"
+        }
+      },
+      { displayModeBar: false, responsive: false }
     );
+    return await Plotly.toImage(exportNode, { format: "png", width: 900, height: 420, scale: 2 });
+  } finally {
+    Plotly.purge(exportNode);
+    exportNode.remove();
   }
 }
 
-function renderExtraCharts(report) {
-  if (!window.Plotly) return;
-  const labels = report.class_probabilities.map((x) => x.class);
-  const probs = report.class_probabilities.map((x) => x.probability);
-  const colors = ["#22c55e", "#f59e0b", "#ef4444"];
-
-  if (probBarChartEl) {
-    Plotly.newPlot(
-      probBarChartEl,
-      [{ x: labels, y: probs, type: "bar", marker: { color: colors } }],
-      {
-        title: "Class Probability (Bar)",
-        margin: { l: 40, r: 10, b: 40, t: 40 },
-        yaxis: { title: "Probability (%)", range: [0, 100] }
-      },
-      { displayModeBar: false, responsive: true }
-    );
-    probBarChartEl.on("plotly_click", (e) => {
-      const cls = e?.points?.[0]?.x;
-      safeSetText(insightPanelEl, buildImprovements(report, cls));
-    });
+function setPreview(file) {
+  if (!file) {
+    safeSetText(selectedFileMetaEl, "No file selected.");
+    if (previewWrapEl) previewWrapEl.hidden = true;
+    if (previewImageEl) previewImageEl.removeAttribute("src");
+    return;
   }
 
-  if (probPieChartEl) {
-    Plotly.newPlot(
-      probPieChartEl,
-      [{ labels, values: probs, type: "pie", textinfo: "label+percent", marker: { colors } }],
-      { title: "Class Probability Share", margin: { l: 10, r: 10, b: 10, t: 40 } },
-      { displayModeBar: false, responsive: true }
-    );
-    probPieChartEl.on("plotly_click", (e) => {
-      const cls = e?.points?.[0]?.label;
-      safeSetText(insightPanelEl, buildImprovements(report, cls));
-    });
+  safeSetText(selectedFileMetaEl, `${file.name} - ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
+  if (!previewWrapEl || !previewImageEl) return;
+  previewImageEl.src = URL.createObjectURL(file);
+  previewWrapEl.hidden = false;
+}
+
+function validateFile(file) {
+  if (!file) return "Select an image first.";
+  const allowed = [".png", ".jpg", ".jpeg"];
+  const name = file.name.toLowerCase();
+  if (!allowed.some((ext) => name.endsWith(ext))) {
+    return "Unsupported file type. Use PNG, JPG, or JPEG.";
   }
+  if (file.size > 10 * 1024 * 1024) {
+    return "File is too large. Keep it under 10 MB.";
+  }
+  return "";
+}
+
+function updateModelMessaging(report) {
+  const source = report.model_info.inference_source;
+  if (source === "trained_model") {
+    safeSetText(modelStatusEl, "Trained model detected. This result used your loaded model file.");
+    safeSetText(modeSummaryEl, "Production-style analysis mode using knee_Model.h5.");
+  } else {
+    safeSetText(modelStatusEl, "Fallback demo mode. This result used the built-in statistical model, not a trained production model.");
+    safeSetText(modeSummaryEl, "Demo analysis mode. Add knee_Model.h5 to switch to trained-model inference.");
+  }
+  safeSetText(
+    confidenceSummaryEl,
+    `${confidenceBand(report.confidence)} confidence. Review image quality and confirm with clinical assessment.`
+  );
 }
 
 function renderReport(data) {
   if (!data || !data.ok || !data.report) {
     safeSetText(reportBoxEl, JSON.stringify(data, null, 2));
+    setStatus("Analysis failed. Review the returned error details.", "error");
     return;
   }
 
@@ -146,9 +236,10 @@ function renderReport(data) {
   safeSetText(confidenceBadgeEl, confidenceBand(data.report.confidence));
   safeSetText(severityValEl, data.report.severity_level);
   safeSetText(sourceValEl, data.report.model_info.inference_source);
-  render3dChart(data.report);
-  renderExtraCharts(data.report);
+  renderChart(data.report);
+  updateModelMessaging(data.report);
   safeSetText(insightPanelEl, buildImprovements(data.report));
+  setStatus("Analysis complete. Review the report and export if needed.", "success");
 
   const lines = [
     "KNEE DISEASE IDENTIFIER REPORT",
@@ -164,6 +255,33 @@ function renderReport(data) {
   ];
   data.report.class_probabilities.forEach((p) => lines.push(`- ${p.class}: ${p.probability}%`));
   lines.push("");
+  if (data.report.guidance) {
+    if (data.report.guidance.urgent_banner) {
+      lines.push(`URGENT: ${data.report.guidance.urgent_banner}`);
+      lines.push("");
+    }
+    lines.push(`Summary: ${data.report.guidance.summary || "-"}`);
+    lines.push(`Confidence Note: ${data.report.guidance.confidence_note || "-"}`);
+    lines.push(`Model Note: ${data.report.guidance.model_note || "-"}`);
+    lines.push(`Medical Examination Recommended: ${data.report.guidance.exam_recommended ? "Yes" : "No"}`);
+    lines.push("");
+    lines.push("Doctor To Visit:");
+    (data.report.guidance.doctor_to_visit || []).forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
+    lines.push("Tests To Discuss:");
+    (data.report.guidance.tests_to_discuss || []).forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
+    lines.push("");
+    lines.push("Foods To Focus On:");
+    (data.report.guidance.foods_to_eat || []).forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
+    lines.push("Habits To Focus On:");
+    (data.report.guidance.habits || []).forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
+    lines.push("Suggested Next Steps:");
+    (data.report.guidance.next_steps || []).forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
+  }
   lines.push(`Note: ${data.report.note}`);
   if (data.report.warning) lines.push(`Warning: ${data.report.warning}`);
   safeSetText(reportBoxEl, lines.join("\n"));
@@ -172,68 +290,260 @@ function renderReport(data) {
 async function downloadPdfReport() {
   if (!latestAnalysis) {
     safeSetText(reportBoxEl, "Run analysis first, then download PDF.");
+    setStatus("No completed analysis is available for PDF export.", "error");
     return;
   }
   const jsPDFLib = window.jspdf && window.jspdf.jsPDF;
   if (!jsPDFLib) {
     safeSetText(reportBoxEl, "PDF library not loaded.");
+    setStatus("PDF export library is unavailable.", "error");
     return;
   }
 
   const doc = new jsPDFLib({ unit: "pt", format: "a4" });
-  let y = 40;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text("Knee Disease Identifier Report", 40, y);
-  y += 24;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const left = 42;
+  const right = 42;
+  const contentWidth = pageWidth - left - right;
+  const signerName = (patientNameEl && patientNameEl.value.trim()) || "________________________";
+  let y = 42;
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  const rows = [
-    `Predicted Class: ${latestAnalysis.predicted_class}`,
-    `Confidence: ${latestAnalysis.confidence}%`,
-    `Severity: ${latestAnalysis.severity_level}`,
-    `Inference Source: ${latestAnalysis.model_info.inference_source}`,
-    `Analysis Time: ${latestAnalysis.analysis_time_ms || 0} ms`,
-    `Views Used: ${latestAnalysis.views_used || 1}`,
-    `Architecture: ${latestAnalysis.model_info.architecture}`,
-    `Image Size: ${latestAnalysis.model_info.image_size}`,
-    `Dataset Source: ${latestAnalysis.dataset_url || "-"}`,
-    `Note: ${latestAnalysis.note}`
-  ];
-  rows.forEach((line) => {
-    doc.text(line, 40, y);
+  const ensureSpace = (needed) => {
+    if (y + needed > pageHeight - 42) {
+      doc.addPage();
+      y = 42;
+    }
+  };
+
+  const addParagraph = (text, opts = {}) => {
+    const lineHeight = opts.lineHeight || 15;
+    const font = opts.font || "times";
+    const style = opts.style || "normal";
+    const size = opts.size || 11.5;
+    const color = opts.color || [0, 0, 0];
+    const indent = opts.indent || 0;
+    doc.setFont(font, style);
+    doc.setFontSize(size);
+    doc.setTextColor(color[0], color[1], color[2]);
+    const lines = doc.splitTextToSize(text, contentWidth - indent);
+    lines.forEach((line) => {
+      ensureSpace(lineHeight);
+      doc.text(line, left + indent, y);
+      y += lineHeight;
+    });
+    y += opts.after || 2;
+    doc.setTextColor(0, 0, 0);
+  };
+
+  const addBulletList = (items, opts = {}) => {
+    items.forEach((item) => {
+      ensureSpace(18);
+      doc.setFont("times", opts.style || "normal");
+      doc.setFontSize(opts.size || 11.5);
+      doc.setTextColor(0, 0, 0);
+      doc.text("-", left, y);
+      const lines = doc.splitTextToSize(item, contentWidth - 14);
+      lines.forEach((line, index) => {
+        ensureSpace(15);
+        doc.text(line, left + 14, y);
+        if (index < lines.length - 1) y += 15;
+      });
+      y += 17;
+    });
+    y += 2;
+  };
+
+  const addSectionHeader = (title) => {
+    ensureSpace(34);
+    doc.setFillColor(245, 245, 245);
+    doc.setDrawColor(160, 160, 160);
+    doc.roundedRect(left - 10, y - 16, contentWidth + 20, 24, 7, 7, "FD");
+    doc.setFont("times", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(10, 10, 10);
+    doc.text(title, left, y);
+    doc.setTextColor(0, 0, 0);
     y += 18;
+  };
+
+  const addKeyValueRows = (rows) => {
+    rows.forEach((row) => {
+      addParagraph(`${row.label}: ${row.value}`, { size: 11.5, lineHeight: 15, after: 1 });
+    });
+    y += 4;
+  };
+
+  doc.setFont("times", "bold");
+  doc.setFontSize(22);
+  doc.text("Knee Disease Identifier Report", left, y);
+  y += 24;
+  addParagraph("Screening summary generated from the uploaded knee X-ray.", {
+    style: "italic",
+    size: 11,
+    color: [85, 85, 85],
+    lineHeight: 14,
+    after: 8,
   });
 
-  y += 8;
-  doc.setFont("helvetica", "bold");
-  doc.text("Class Probabilities:", 40, y);
-  y += 18;
-  doc.setFont("helvetica", "normal");
-  latestAnalysis.class_probabilities.forEach((p) => {
-    doc.text(`- ${p.class}: ${p.probability}%`, 52, y);
-    y += 16;
-  });
+  addSectionHeader("Core Findings");
+  addKeyValueRows([
+    { label: "Predicted Class", value: latestAnalysis.predicted_class },
+    { label: "Confidence", value: `${latestAnalysis.confidence}%` },
+    { label: "Severity", value: latestAnalysis.severity_level },
+    { label: "Inference Source", value: latestAnalysis.model_info.inference_source },
+    { label: "Analysis Time", value: `${latestAnalysis.analysis_time_ms || 0} ms` },
+    { label: "Views Used", value: `${latestAnalysis.views_used || 1}` },
+    { label: "Architecture", value: latestAnalysis.model_info.architecture },
+    { label: "Image Size", value: latestAnalysis.model_info.image_size },
+    { label: "Dataset Source", value: latestAnalysis.dataset_url || "-" },
+    { label: "Note", value: latestAnalysis.note },
+  ]);
 
-  try {
-    const imgData = await Plotly.toImage(probChart3dEl, { format: "png", width: 1000, height: 600 });
-    doc.addImage(imgData, "PNG", 40, y + 8, 520, 300);
-  } catch (_err) {
-    doc.text("Chart snapshot unavailable.", 40, y + 24);
+  addSectionHeader("Class Probabilities");
+  addBulletList(latestAnalysis.class_probabilities.map((p) => `${p.class}: ${p.probability}%`));
+
+  if (latestAnalysis.guidance) {
+    addSectionHeader("Guidance");
+    if (latestAnalysis.guidance.urgent_banner) {
+      addParagraph(`URGENT: ${latestAnalysis.guidance.urgent_banner}`, {
+        style: "bold",
+        size: 12,
+        color: [180, 0, 0],
+        lineHeight: 17,
+        after: 8,
+      });
+    }
+
+    addKeyValueRows([
+      { label: "Summary", value: latestAnalysis.guidance.summary || "-" },
+      { label: "Confidence Note", value: latestAnalysis.guidance.confidence_note || "-" },
+      { label: "Model Note", value: latestAnalysis.guidance.model_note || "-" },
+      { label: "Medical Examination Recommended", value: latestAnalysis.guidance.exam_recommended ? "Yes" : "No" },
+    ]);
+
+    addParagraph("Doctor To Visit", { style: "bold", size: 12, after: 4 });
+    addBulletList(latestAnalysis.guidance.doctor_to_visit || []);
+
+    addParagraph("Tests To Discuss", { style: "bold", size: 12, after: 4 });
+    addBulletList(latestAnalysis.guidance.tests_to_discuss || []);
+
+    addParagraph("Foods To Focus On", { style: "bold", size: 12, after: 4 });
+    addBulletList(latestAnalysis.guidance.foods_to_eat || []);
+
+    addParagraph("Habits To Focus On", { style: "bold", size: 12, after: 4 });
+    addBulletList(latestAnalysis.guidance.habits || []);
+
+    addParagraph("Suggested Next Steps", { style: "bold", size: 12, after: 4 });
+    addBulletList(latestAnalysis.guidance.next_steps || []);
+
+    addParagraph("When To Seek Care", { style: "bold", size: 12, after: 4 });
+    addBulletList(latestAnalysis.guidance.when_to_seek_care || []);
+
+    addParagraph(`Disclaimer: ${latestAnalysis.guidance.disclaimer || latestAnalysis.note}`, {
+      style: "italic",
+      size: 11,
+      color: [85, 85, 85],
+      lineHeight: 14,
+      after: 8,
+    });
   }
 
+  try {
+    const imgData = await buildPdfChartImage(latestAnalysis);
+    if (imgData) {
+      ensureSpace(290);
+      addSectionHeader("Confidence Chart");
+      doc.setDrawColor(180, 180, 180);
+      doc.rect(left, y - 4, contentWidth, 230);
+      doc.addImage(imgData, "PNG", left + 6, y + 2, contentWidth - 12, 218);
+      y += 240;
+    } else {
+      addSectionHeader("Confidence Chart");
+      addParagraph("Chart snapshot unavailable.");
+    }
+  } catch (_err) {
+    addSectionHeader("Confidence Chart");
+    addParagraph("Chart snapshot unavailable.");
+  }
+
+  addSectionHeader("Signature");
+  addKeyValueRows([
+    { label: "Name", value: signerName },
+    { label: "Signature", value: "________________________" },
+  ]);
+
   doc.save(`knee_report_${Date.now()}.pdf`);
+  setStatus("PDF report downloaded.", "success");
+}
+
+function handleSelectedFile(file) {
+  const error = validateFile(file);
+  if (error) {
+    setPreview(null);
+    setStatus(error, "error");
+    return false;
+  }
+  setPreview(file);
+  setStatus("Image ready. Click Analyze Image to continue.", "info");
+  return true;
+}
+
+analyzeFileEl.addEventListener("change", () => {
+  const file = analyzeFileEl.files && analyzeFileEl.files[0];
+  handleSelectedFile(file);
+});
+
+if (uploadZoneEl) {
+  ["dragenter", "dragover"].forEach((eventName) => {
+    uploadZoneEl.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      uploadZoneEl.classList.add("dragover");
+    });
+  });
+
+  ["dragleave", "drop"].forEach((eventName) => {
+    uploadZoneEl.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      uploadZoneEl.classList.remove("dragover");
+    });
+  });
+
+  uploadZoneEl.addEventListener("drop", (event) => {
+    const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+    if (!file) return;
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    analyzeFileEl.files = transfer.files;
+    handleSelectedFile(file);
+  });
+}
+
+if (heroVisualEl) {
+  heroVisualEl.addEventListener("mousemove", (event) => {
+    const rect = heroVisualEl.getBoundingClientRect();
+    const offsetX = (event.clientX - rect.left) / rect.width - 0.5;
+    const offsetY = (event.clientY - rect.top) / rect.height - 0.5;
+    heroVisualEl.style.transform =
+      `rotateX(${(-offsetY * 10).toFixed(2)}deg) rotateY(${(offsetX * 14).toFixed(2)}deg)`;
+  });
+
+  heroVisualEl.addEventListener("mouseleave", () => {
+    heroVisualEl.style.transform = "rotateX(0deg) rotateY(0deg)";
+  });
 }
 
 analyzeBtnEl.addEventListener("click", async () => {
   const file = analyzeFileEl.files && analyzeFileEl.files[0];
-  if (!file) {
-    safeSetText(reportBoxEl, "Select an image first.");
+  const error = validateFile(file);
+  if (error) {
+    safeSetText(reportBoxEl, error);
+    setStatus(error, "error");
     return;
   }
 
   safeSetText(reportBoxEl, "Analyzing...");
+  setStatus("Analysis in progress. This may take a few seconds.", "info");
   const form = new FormData();
   form.append("image", file);
 
@@ -243,6 +553,7 @@ analyzeBtnEl.addEventListener("click", async () => {
     renderReport(data);
   } catch (err) {
     safeSetText(reportBoxEl, `Request failed: ${String(err)}`);
+    setStatus("Request failed. Check your connection or server status.", "error");
   }
 });
 

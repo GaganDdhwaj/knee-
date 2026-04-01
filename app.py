@@ -18,6 +18,124 @@ app = Flask(__name__)
 _MODEL = None
 
 
+def _build_guidance(predicted_class: str, confidence: float, source: str):
+    confidence_band = (
+        "very_high" if confidence >= 85 else "high" if confidence >= 70 else "moderate" if confidence >= 50 else "low"
+    )
+
+    base = {
+        "disclaimer": "This is screening guidance only, not a diagnosis or treatment plan.",
+        "exam_recommended": True,
+        "urgent_banner": "",
+        "doctor_to_visit": [],
+        "tests_to_discuss": [],
+        "when_to_seek_care": [
+            "Get medical care promptly for sudden severe knee pain, inability to bear weight, visible deformity, or a recent fracture.",
+            "Arrange clinician review if symptoms persist, worsen, or do not match the screening result.",
+        ],
+    }
+
+    if predicted_class == "Normal":
+        guidance = {
+            "summary": "The image pattern is closer to the normal class, so the goal is maintaining bone and joint health.",
+            "foods_to_eat": [
+                "Calcium-rich foods such as milk, yogurt, cheese, calcium-set tofu, or fortified plant milk.",
+                "Vitamin D and protein sources such as eggs, fish, fortified foods, beans, lentils, and yogurt.",
+                "A balanced plate with leafy greens, fruit, whole grains, and adequate daily protein.",
+            ],
+            "habits": [
+                "Keep regular weight-bearing exercise such as walking, stair climbing, or light resistance training.",
+                "Avoid smoking and keep alcohol intake moderate.",
+                "Maintain a healthy body weight and regular activity pattern.",
+            ],
+            "next_steps": [
+                "Continue routine checkups and discuss bone health if you have strong risk factors or chronic steroid use.",
+                "Focus on prevention rather than medication unless your clinician finds other risk factors.",
+            ],
+            "doctor_to_visit": [
+                "Primary care clinician or family doctor for routine bone-health review if you have risk factors."
+            ],
+            "tests_to_discuss": [
+                "Routine review of calcium and vitamin D intake.",
+                "Bone-density testing only if your clinician feels risk factors justify it."
+            ],
+        }
+    elif predicted_class == "Osteopenia":
+        guidance = {
+            "summary": "The image pattern is closer to osteopenia, so the focus is slowing bone loss and reducing progression risk.",
+            "foods_to_eat": [
+                "Prioritize calcium-rich foods daily, including dairy or fortified alternatives, tofu, almonds, and leafy greens.",
+                "Increase vitamin D intake from fortified foods, eggs, or oily fish if those fit your diet.",
+                "Support bone and muscle health with adequate protein from beans, lentils, dairy, fish, chicken, soy, or eggs.",
+            ],
+            "habits": [
+                "Do regular weight-bearing and muscle-strengthening exercise, such as brisk walking, squats, step-ups, or resistance bands.",
+                "Work on fall prevention with balance training, footwear, and home safety.",
+                "Avoid smoking and limit alcohol.",
+            ],
+            "next_steps": [
+                "Discuss bone-health review with a clinician, especially if you have fracture risk factors or worsening symptoms.",
+                "Ask whether calcium or vitamin D supplementation is appropriate for you.",
+            ],
+            "doctor_to_visit": [
+                "Primary care clinician for initial review.",
+                "Endocrinologist or rheumatologist if bone loss is progressing or risk factors are complex."
+            ],
+            "tests_to_discuss": [
+                "Bone-density scan such as a DEXA scan.",
+                "Vitamin D level and other bone-health labs if your clinician recommends them."
+            ],
+        }
+    else:
+        guidance = {
+            "summary": "The image pattern is closer to osteoporosis, so the result should be reviewed medically rather than managed only with lifestyle changes.",
+            "foods_to_eat": [
+                "Aim for consistent calcium intake from dairy or fortified alternatives, tofu, sardines with bones, or leafy greens.",
+                "Include vitamin D sources such as fortified foods, eggs, and oily fish if tolerated.",
+                "Keep protein intake adequate to support muscle strength and reduce frailty risk.",
+            ],
+            "habits": [
+                "Use safe weight-bearing or strengthening exercise only within your comfort and clinician guidance if pain or fracture risk is significant.",
+                "Prioritize fall prevention, supportive footwear, home hazard reduction, and balance work.",
+                "Avoid smoking and keep alcohol intake low.",
+            ],
+            "next_steps": [
+                "Arrange clinician review to discuss fracture risk, bone-density testing, and whether medication or supplements are needed.",
+                "Do not rely on this screening result alone if you have pain, reduced mobility, or prior fractures.",
+            ],
+            "urgent_banner": "High-priority follow-up: this result warrants timely medical review. If you also have severe pain, recent injury, swelling, deformity, or cannot bear weight, seek urgent medical care immediately.",
+            "doctor_to_visit": [
+                "Primary care clinician for immediate coordination of care.",
+                "Orthopaedic surgeon or sports-medicine orthopaedic specialist if there is trauma, deformity, inability to bear weight, or possible fracture.",
+                "Endocrinologist or rheumatologist for osteoporosis management and fracture-risk reduction."
+            ],
+            "tests_to_discuss": [
+                "Bone-density scan such as a DEXA scan.",
+                "Fracture evaluation or urgent X-ray review if there has been a fall, trauma, or sudden severe pain.",
+                "Vitamin D, calcium, and other bone-health labs if your clinician recommends them."
+            ],
+        }
+
+    if confidence_band in {"low", "moderate"}:
+        guidance["confidence_note"] = (
+            "Confidence is limited, so image quality, positioning, and clinical history matter more than usual."
+        )
+    else:
+        guidance["confidence_note"] = (
+            "Confidence is relatively stronger, but the result still needs clinical interpretation."
+        )
+
+    if source != "trained_model":
+        guidance["model_note"] = (
+            "This report used the built-in fallback model, so treat it as demo screening output only."
+        )
+    else:
+        guidance["model_note"] = "This report used the loaded trained model."
+
+    guidance.update(base)
+    return guidance
+
+
 def _load_model():
     global _MODEL
     if _MODEL is not None:
@@ -119,8 +237,12 @@ def _predict_image(image_path: Path):
         "views_used": len(views),
         "dataset_url": DATASET_URL,
     }
+    report["guidance"] = _build_guidance(top_class, report["confidence"], source)
     if source == "python_statistical_model":
         report["warning"] = "Using the built-in fallback model. Add knee_Model.h5 for your trained model."
+        report["mode_label"] = "Demo fallback analysis"
+    else:
+        report["mode_label"] = "Trained model analysis"
     return report
 
 
