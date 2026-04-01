@@ -4,7 +4,7 @@ import traceback
 from pathlib import Path
 
 import numpy as np
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -249,6 +249,11 @@ def _predict_image(image_path: Path):
 @app.route("/")
 def home():
     return render_template("index.html", dataset_url=DATASET_URL)
+
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(APP_DIR / "static", "favicon.ico", mimetype="image/x-icon")
 
 
 @app.route("/api/analyze", methods=["POST"])
