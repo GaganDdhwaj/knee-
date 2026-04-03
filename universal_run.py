@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+"""Universal startup - works in any working directory"""
+import subprocess
+import sys
 import os
 import json
 import time
@@ -6,11 +10,27 @@ from pathlib import Path
 from typing import Dict
 from urllib import error, request as urllib_request
 
+# First, install dependencies
+print("[v0] Installing Flask, numpy, and Pillow...")
+for pkg in ["Flask", "numpy", "Pillow"]:
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", pkg],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(f"[v0] Warning installing {pkg}: {result.stderr[:100]}")
+
+print("[v0] Dependencies installed!")
+print("[v0] Starting Knee Disease Identifier app...")
+print("[v0] Access the app at http://localhost:5000")
+
+# Now execute the app code directly
 import numpy as np
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
-
-APP_DIR = Path(__file__).resolve().parent
+# ===== APP CODE BEGINS =====
+APP_DIR = Path.cwd()
 MODEL_PATH = APP_DIR / "knee_Model.h5"
 ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"}
 CLASS_NAMES = ["Normal", "Osteopenia", "Osteoporosis"]
@@ -18,9 +38,8 @@ IMG_SIZE = (224, 224)
 DATASET_URL = "https://www.kaggle.com/datasets/mohamedgobara/multi-class-knee-osteoporosis-x-ray-dataset"
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder="templates", static_folder="static")
 _MODEL = None
-
 
 def _build_guidance(predicted_class: str, confidence: float, source: str):
     confidence_band = (
@@ -139,6 +158,88 @@ def _build_guidance(predicted_class: str, confidence: float, source: str):
     guidance.update(base)
     return guidance
 
+def _normalize_assistant_text(text: str) -> str:
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+    return cleaned.replace("\r\n", "\n").replace("\r", "\n")
+
+def _gemini_reply(report: Dict, question: str, history=None) -> str:
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("Missing GEMINI_API_KEY")
+    
+    history = history or []
+    history_lines = []
+    for item in history[-6:]:
+        role = item.get("role", "user")
+        content = item.get("content", "")
+        if content:
+            history_lines.append(f"{role.title()}: {content}")
+
+    guidance = report.get("guidance", {})
+    prompt = {
+        "role": (
+            "You are a screening-support AI assistant for a knee X-ray website. "
+            "Answer naturally and conversationally, but do not claim to diagnose, prescribe, "
+            "or replace a doctor. Stay grounded in the provided report only."
+        ),
+        "rules": [
+            "Be direct, helpful, and short-to-medium length.",
+            "If urgent symptoms are mentioned or the report has urgent guidance, say that urgent medical care may be needed.",
+            "Mention doctor type or tests only if supported by the report guidance.",
+            "Do not invent accuracy claims or say the tool is perfect.",
+            "Remind the user this is screening support, not a diagnosis, when relevant."
+        ],
+        "report": {
+            "predicted_class": report.get("predicted_class"),
+            "confidence": report.get("confidence"),
+            "severity_level": report.get("severity_level"),
+            "source": report.get("model_info", {}).get("inference_source"),
+            "guidance": guidance,
+            "warning": report.get("warning"),
+            "note": report.get("note"),
+        },
+        "recent_conversation": history_lines,
+        "user_question": question,
+    }
+    
+    prompt_text = json.dumps(prompt, ensure_ascii=True)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    payload = {
+        "contents": [{"parts": [{"text": prompt_text}]}],
+        "generationConfig": {
+            "temperature": 0.3,
+            "topP": 0.9,
+            "maxOutputTokens": 400,
+        },
+    }
+    req = urllib_request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        },
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Gemini HTTP {exc.code}: {detail[:300]}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Gemini request failed: {exc}") from exc
+
+    candidates = body.get("candidates") or []
+    if not candidates:
+        raise RuntimeError("Gemini returned no candidates")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text = "".join(part.get("text", "") for part in parts).strip()
+    if not text:
+        raise RuntimeError("Gemini returned empty text")
+    return _normalize_assistant_text(text)
 
 def _assistant_reply(report: Dict, question: str, history=None) -> str:
     history = history or []
@@ -156,7 +257,7 @@ def _assistant_reply(report: Dict, question: str, history=None) -> str:
 
     if any(word in q for word in ["hello", "hi", "hey"]):
         return (
-            f"I’m looking at a report that predicts {predicted_class} with {confidence}% confidence. "
+            f"I'm looking at a report that predicts {predicted_class} with {confidence}% confidence. "
             "Ask me about meaning, doctor type, tests, food, urgent signs, or next steps."
         )
 
@@ -219,9 +320,9 @@ def _assistant_reply(report: Dict, question: str, history=None) -> str:
     if history:
         last_user = next((item.get("content", "") for item in reversed(history) if item.get("role") == "user"), "")
         return (
-            f"I’m answering from the current report context. Your last question was: '{last_user}'. "
+            f"I'm answering from the current report context. Your last question was: '{last_user}'. "
             f"For this case, the report predicts {predicted_class} at {confidence}% confidence. "
-            "Ask me directly about doctor type, tests, food, urgent care, or next steps and I’ll answer specifically."
+            "Ask me directly about doctor type, tests, food, urgent care, or next steps and I'll answer specifically."
         )
 
     return (
@@ -229,95 +330,6 @@ def _assistant_reply(report: Dict, question: str, history=None) -> str:
         "Ask me something specific such as which doctor to visit, what tests to discuss, "
         "what foods to focus on, or when to seek urgent care."
     )
-
-
-def _assistant_prompt(report: Dict, question: str, history=None) -> str:
-    history = history or []
-    history_lines = []
-    for item in history[-6:]:
-        role = item.get("role", "user")
-        content = item.get("content", "")
-        if content:
-            history_lines.append(f"{role.title()}: {content}")
-
-    guidance = report.get("guidance", {})
-    prompt = {
-        "role": (
-            "You are a screening-support AI assistant for a knee X-ray website. "
-            "Answer naturally and conversationally, but do not claim to diagnose, prescribe, "
-            "or replace a doctor. Stay grounded in the provided report only."
-        ),
-        "rules": [
-            "Be direct, helpful, and short-to-medium length.",
-            "If urgent symptoms are mentioned or the report has urgent guidance, say that urgent medical care may be needed.",
-            "Mention doctor type or tests only if supported by the report guidance.",
-            "Do not invent accuracy claims or say the tool is perfect.",
-            "Remind the user this is screening support, not a diagnosis, when relevant."
-        ],
-        "report": {
-            "predicted_class": report.get("predicted_class"),
-            "confidence": report.get("confidence"),
-            "severity_level": report.get("severity_level"),
-            "source": report.get("model_info", {}).get("inference_source"),
-            "guidance": guidance,
-            "warning": report.get("warning"),
-            "note": report.get("note"),
-        },
-        "recent_conversation": history_lines,
-        "user_question": question,
-    }
-    return json.dumps(prompt, ensure_ascii=True)
-
-
-def _normalize_assistant_text(text: str) -> str:
-    cleaned = (text or "").strip()
-    if not cleaned:
-        return ""
-    return cleaned.replace("\r\n", "\n").replace("\r", "\n")
-
-
-def _gemini_reply(report: Dict, question: str, history=None) -> str:
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("Missing GEMINI_API_KEY")
-
-    prompt = _assistant_prompt(report, question, history)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.3,
-            "topP": 0.9,
-            "maxOutputTokens": 400,
-        },
-    }
-    req = urllib_request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key,
-        },
-        method="POST",
-    )
-    try:
-        with urllib_request.urlopen(req, timeout=30) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Gemini HTTP {exc.code}: {detail[:300]}") from exc
-    except Exception as exc:
-        raise RuntimeError(f"Gemini request failed: {exc}") from exc
-
-    candidates = body.get("candidates") or []
-    if not candidates:
-        raise RuntimeError("Gemini returned no candidates")
-    parts = candidates[0].get("content", {}).get("parts", [])
-    text = "".join(part.get("text", "") for part in parts).strip()
-    if not text:
-        raise RuntimeError("Gemini returned empty text")
-    return _normalize_assistant_text(text)
-
 
 def _load_model():
     global _MODEL
@@ -335,7 +347,6 @@ def _load_model():
     except Exception:
         return None
 
-
 def _extract_features(rgb_arr):
     gray = rgb_arr.mean(axis=2)
     hist, _ = np.histogram(gray, bins=16, range=(0.0, 1.0), density=True)
@@ -350,7 +361,6 @@ def _extract_features(rgb_arr):
             ),
         ]
     )
-
 
 def _predict_with_statistical_model(arr):
     feat = _extract_features(arr)
@@ -370,7 +380,6 @@ def _predict_with_statistical_model(arr):
     signal = signal - signal.max()
     probs = np.exp(signal)
     return probs / (probs.sum() + 1e-8)
-
 
 def _predict_image(image_path: Path):
     started = time.perf_counter()
@@ -430,16 +439,13 @@ def _predict_image(image_path: Path):
         report["mode_label"] = "Trained model analysis"
     return report
 
-
 @app.route("/")
 def home():
     return render_template("index.html", dataset_url=DATASET_URL)
 
-
 @app.route("/favicon.ico")
 def favicon():
     return send_from_directory(APP_DIR / "static", "favicon.ico", mimetype="image/x-icon")
-
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
@@ -476,7 +482,6 @@ def analyze():
             }
         ), 500
 
-
 @app.route("/api/assistant", methods=["POST"])
 def assistant():
     payload = request.get_json(silent=True) or {}
@@ -495,7 +500,6 @@ def assistant():
         reply = _assistant_reply(report, question, history)
 
     return jsonify({"ok": True, "reply": _normalize_assistant_text(reply), "source": source})
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
