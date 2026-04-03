@@ -199,7 +199,22 @@
 
       <div id="statusMessage" class="status-message">Ready for upload.</div>
 
-      <div id="reportPanel" class="report-panel">
+      <section id="followupPanel" class="followup-panel" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">AI Follow-Up</p>
+            <h2>Answer These Questions Before The Dashboard Is Finalized</h2>
+          </div>
+          <div class="section-note">Patient response step</div>
+        </div>
+        <div id="followupIntro" class="followup-intro">The AI assistant will ask a few questions based on the current screening result.</div>
+        <div id="followupQuestions" class="followup-questions"></div>
+        <div class="action-row">
+          <button id="followupSubmitBtn" type="button">Build Patient Dashboard</button>
+        </div>
+      </section>
+
+      <div id="reportPanel" class="report-panel" hidden>
         <div id="urgentAlert" class="urgent-alert" hidden></div>
         <div class="report-grid">
           <div><strong>Prediction:</strong> <span id="predictedClass">-</span></div>
@@ -218,6 +233,72 @@
             <p id="confidenceSummary">Run an analysis to see confidence details and output quality notes.</p>
             <h3>Output Mode</h3>
             <p id="modeSummary">Waiting for upload.</p>
+          </div>
+        </div>
+        <div class="chart-row chart-row-secondary">
+          <div id="trendLineChart" class="chart2d"></div>
+          <div id="probPieChart" class="chart2d"></div>
+        </div>
+        <div class="health-dashboard">
+          <div class="dashboard-panel dashboard-panel-wide">
+            <div class="dashboard-heading">
+              <div>
+                <p class="eyebrow">Patient Health Dashboard</p>
+                <h3>Clinical Summary</h3>
+              </div>
+              <div id="examBadge" class="dashboard-badge">Awaiting analysis</div>
+            </div>
+            <div id="summaryText" class="dashboard-summary">Run an analysis to generate a structured patient-health dashboard.</div>
+            <div class="dashboard-stats">
+              <article class="dash-stat">
+                <span>Risk Level</span>
+                <strong id="riskLevelCard">-</strong>
+              </article>
+              <article class="dash-stat">
+                <span>Model Confidence</span>
+                <strong id="confidenceCard">-</strong>
+              </article>
+              <article class="dash-stat">
+                <span>Exam Recommended</span>
+                <strong id="examCard">-</strong>
+              </article>
+              <article class="dash-stat">
+                <span>Inference Mode</span>
+                <strong id="sourceCard">-</strong>
+              </article>
+            </div>
+          </div>
+          <div class="dashboard-panel">
+            <div class="dashboard-heading">
+              <h3>Doctor To Visit</h3>
+            </div>
+            <ul id="doctorList" class="dashboard-list">
+              <li>Run an analysis to see doctor recommendations.</li>
+            </ul>
+          </div>
+          <div class="dashboard-panel">
+            <div class="dashboard-heading">
+              <h3>Tests To Discuss</h3>
+            </div>
+            <ul id="testsList" class="dashboard-list">
+              <li>Run an analysis to see suggested tests.</li>
+            </ul>
+          </div>
+          <div class="dashboard-panel">
+            <div class="dashboard-heading">
+              <h3>Foods To Focus On</h3>
+            </div>
+            <ul id="foodsList" class="dashboard-list">
+              <li>Run an analysis to see nutrition guidance.</li>
+            </ul>
+          </div>
+          <div class="dashboard-panel">
+            <div class="dashboard-heading">
+              <h3>Next Steps</h3>
+            </div>
+            <ul id="stepsList" class="dashboard-list">
+              <li>Run an analysis to see the next-step plan.</li>
+            </ul>
           </div>
         </div>
         <div id="insightPanel" class="insight-panel"></div>

@@ -4,6 +4,11 @@ const downloadPdfBtnEl = document.getElementById("downloadPdfBtn");
 const reportBoxEl = document.getElementById("reportBox");
 const patientNameEl = document.getElementById("patientName");
 const urgentAlertEl = document.getElementById("urgentAlert");
+const reportPanelEl = document.getElementById("reportPanel");
+const followupPanelEl = document.getElementById("followupPanel");
+const followupIntroEl = document.getElementById("followupIntro");
+const followupQuestionsEl = document.getElementById("followupQuestions");
+const followupSubmitBtnEl = document.getElementById("followupSubmitBtn");
 const assistantQuestionEl = document.getElementById("assistantQuestion");
 const assistantAskBtnEl = document.getElementById("assistantAskBtn");
 const assistantThreadEl = document.getElementById("assistantThread");
@@ -21,18 +26,53 @@ const confidenceValEl = document.getElementById("confidenceVal");
 const severityValEl = document.getElementById("severityVal");
 const sourceValEl = document.getElementById("sourceVal");
 const probBarChartEl = document.getElementById("probBarChart");
+const trendLineChartEl = document.getElementById("trendLineChart");
+const probPieChartEl = document.getElementById("probPieChart");
 const confidenceFillEl = document.getElementById("confidenceFill");
 const confidenceBadgeEl = document.getElementById("confidenceBadge");
 const insightPanelEl = document.getElementById("insightPanel");
 const assistantChipEls = document.querySelectorAll(".assistant-chip");
 const bgVideoEl = document.getElementById("bgVideo");
+const summaryTextEl = document.getElementById("summaryText");
+const examBadgeEl = document.getElementById("examBadge");
+const riskLevelCardEl = document.getElementById("riskLevelCard");
+const confidenceCardEl = document.getElementById("confidenceCard");
+const examCardEl = document.getElementById("examCard");
+const sourceCardEl = document.getElementById("sourceCard");
+const doctorListEl = document.getElementById("doctorList");
+const testsListEl = document.getElementById("testsList");
+const foodsListEl = document.getElementById("foodsList");
+const stepsListEl = document.getElementById("stepsList");
 const heroCardEls = heroVisualEl ? heroVisualEl.querySelectorAll(".visual-card") : [];
 const heroOrbEls = heroVisualEl ? heroVisualEl.querySelectorAll(".orb") : [];
 const heroGridEl = heroVisualEl ? heroVisualEl.querySelector(".hero-grid-lines") : null;
 
 let latestAnalysis = null;
+let pendingAnalysis = null;
 let assistantHistory = [];
 const PDF_CHART_COLORS = ["#66d9d0", "#90aeb6", "#1f2f36"];
+const FOLLOWUP_QUESTIONS = [
+  {
+    id: "pain_level",
+    label: "1. How strong is the current knee pain?",
+    options: ["None", "Mild", "Moderate", "Severe"]
+  },
+  {
+    id: "mobility_limit",
+    label: "2. How much is walking or movement limited?",
+    options: ["None", "Slight", "Moderate", "Major"]
+  },
+  {
+    id: "recent_injury",
+    label: "3. Was there a recent fall, injury, or suspected fracture?",
+    options: ["No", "Yes"]
+  },
+  {
+    id: "known_history",
+    label: "4. Is there any known prior bone-health history?",
+    options: ["None", "Osteopenia", "Osteoporosis"]
+  }
+];
 
 if (bgVideoEl && bgVideoEl.parentElement) {
   bgVideoEl.addEventListener("error", () => {
@@ -100,6 +140,105 @@ function safeSetText(el, value) {
 
 function safeSetWidth(el, value) {
   if (el) el.style.width = value;
+}
+
+function renderDashboardList(el, items, fallback) {
+  if (!el) return;
+  el.innerHTML = "";
+  const source = items && items.length ? items : [fallback];
+  source.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    el.appendChild(li);
+  });
+}
+
+function buildFollowupSummary(report) {
+  const predicted = report.predicted_class;
+  const severity = report.severity_level;
+  return `The AI screening result is currently closer to ${predicted} with ${report.confidence}% confidence and ${severity} severity. Answer these follow-up questions so the patient-health dashboard can reflect symptoms, mobility, injury risk, and known history before the final charts are shown.`;
+}
+
+function renderFollowupQuestions(report) {
+  if (!followupPanelEl || !followupQuestionsEl) return;
+  followupPanelEl.hidden = false;
+  if (reportPanelEl) reportPanelEl.hidden = true;
+  safeSetText(followupIntroEl, buildFollowupSummary(report));
+  followupQuestionsEl.innerHTML = "";
+  FOLLOWUP_QUESTIONS.forEach((question, index) => {
+    const wrap = document.createElement("div");
+    wrap.className = "followup-question";
+    const label = document.createElement("label");
+    label.className = "followup-label";
+    label.textContent = question.label;
+    const select = document.createElement("select");
+    select.className = "followup-select";
+    select.id = `followup-${question.id}`;
+    question.options.forEach((option, optionIndex) => {
+      const item = document.createElement("option");
+      item.value = option;
+      item.textContent = option;
+      if (optionIndex === 0) item.selected = true;
+      select.appendChild(item);
+    });
+    wrap.appendChild(label);
+    wrap.appendChild(select);
+    followupQuestionsEl.appendChild(wrap);
+  });
+}
+
+function getFollowupAnswers() {
+  const answers = {};
+  FOLLOWUP_QUESTIONS.forEach((question) => {
+    const input = document.getElementById(`followup-${question.id}`);
+    answers[question.id] = input ? input.value : question.options[0];
+  });
+  return answers;
+}
+
+function adjustProbabilities(report, answers) {
+  const probs = {};
+  report.class_probabilities.forEach((item) => {
+    probs[item.class] = item.probability;
+  });
+  const painMap = { None: -8, Mild: -2, Moderate: 6, Severe: 14 };
+  const mobilityMap = { None: -6, Slight: 0, Moderate: 8, Major: 14 };
+  const historyMap = { None: 0, Osteopenia: 8, Osteoporosis: 14 };
+  const severeBoost = (painMap[answers.pain_level] || 0) + (mobilityMap[answers.mobility_limit] || 0) + (historyMap[answers.known_history] || 0) + (answers.recent_injury === "Yes" ? 16 : 0);
+  probs.Osteoporosis = Math.max(5, probs.Osteoporosis + severeBoost * 0.55);
+  probs.Osteopenia = Math.max(5, probs.Osteopenia + severeBoost * 0.25);
+  probs.Normal = Math.max(1, probs.Normal - severeBoost * 0.6);
+  const total = probs.Normal + probs.Osteopenia + probs.Osteoporosis;
+  const normalized = [
+    { class: "Osteoporosis", probability: Number(((probs.Osteoporosis / total) * 100).toFixed(2)) },
+    { class: "Osteopenia", probability: Number(((probs.Osteopenia / total) * 100).toFixed(2)) },
+    { class: "Normal", probability: Number(((probs.Normal / total) * 100).toFixed(2)) }
+  ];
+  normalized.sort((a, b) => b.probability - a.probability);
+  return normalized;
+}
+
+function deriveAnsweredReport(report, answers) {
+  const answered = JSON.parse(JSON.stringify(report));
+  answered.followup_answers = answers;
+  answered.class_probabilities = adjustProbabilities(report, answers);
+  answered.predicted_class = answered.class_probabilities[0].class;
+  answered.confidence = answered.class_probabilities[0].probability;
+  answered.severity_level =
+    answered.predicted_class === "Osteoporosis" ? "High" :
+    answered.predicted_class === "Osteopenia" ? "Medium" : "Low";
+  answered.answer_profile = [
+    { label: "Imaging Signal", value: report.confidence },
+    { label: "Symptom Load", value: Math.min(100, ({"None": 12, "Mild": 32, "Moderate": 64, "Severe": 92}[answers.pain_level] || 20)) },
+    { label: "Mobility Stress", value: Math.min(100, ({"None": 10, "Slight": 30, "Moderate": 62, "Major": 88}[answers.mobility_limit] || 20)) },
+    { label: "Fracture Risk", value: Math.min(100, answers.recent_injury === "Yes" ? 92 : (answers.known_history === "Osteoporosis" ? 78 : answers.known_history === "Osteopenia" ? 52 : 18)) }
+  ];
+  answered.guidance.summary = `${report.guidance.summary} Follow-up answers indicate pain is ${answers.pain_level.toLowerCase()}, mobility limitation is ${answers.mobility_limit.toLowerCase()}, recent injury is ${answers.recent_injury.toLowerCase()}, and known history is ${answers.known_history.toLowerCase()}.`;
+  if (answers.recent_injury === "Yes" || answers.pain_level === "Severe") {
+    answered.guidance.urgent_banner = answered.guidance.urgent_banner || "High-priority follow-up: the symptom answers raise concern for urgent medical review, especially if fracture is possible.";
+    answered.guidance.exam_recommended = true;
+  }
+  return answered;
 }
 
 function setStatus(message, tone = "info") {
@@ -205,35 +344,219 @@ function renderChart(report) {
   });
 }
 
-async function buildPdfChartImage(report) {
+function renderTrendChart(report) {
+  if (!window.Plotly || !trendLineChartEl) return;
+  const profile = report.answer_profile || [
+    { label: "Imaging Signal", value: report.confidence },
+    { label: "Symptom Load", value: 30 },
+    { label: "Mobility Stress", value: 30 },
+    { label: "Fracture Risk", value: 20 }
+  ];
+  const labels = profile.map((x) => x.label);
+  const probs = profile.map((x) => x.value);
+  const baseline = [25, 35, 35, 28];
+
+  Plotly.newPlot(
+    trendLineChartEl,
+    [
+      {
+        x: labels,
+        y: baseline,
+        type: "scatter",
+        mode: "lines",
+        line: { color: "#8fa1d2", width: 3, dash: "dot" },
+        name: "Baseline"
+      },
+      {
+        x: labels,
+        y: probs,
+        type: "scatter",
+        mode: "lines+markers",
+        line: { color: "#6d4aff", width: 5, shape: "spline", smoothing: 1.1 },
+        marker: { color: "#62f6ff", size: 12, line: { color: "#ffffff", width: 2.5 } },
+        fill: "tozeroy",
+        fillcolor: "rgba(98, 246, 255, 0.22)",
+        name: "Model trend"
+      }
+    ],
+    {
+      title: { text: "Risk Trend From Answers", font: { color: "#f7fbff", size: 22 } },
+      paper_bgcolor: "#0b1730",
+      plot_bgcolor: "#0f1d3f",
+      font: { color: "#f7fbff", size: 14 },
+      margin: { l: 58, r: 28, b: 64, t: 58 },
+      legend: {
+        orientation: "h",
+        x: 0,
+        y: 1.14,
+        font: { color: "#dbe6ff", size: 12 }
+      },
+      xaxis: {
+        color: "#dbe6ff",
+        tickfont: { size: 12 },
+        tickangle: -10
+      },
+      yaxis: {
+        title: "Risk Index",
+        range: [0, 100],
+        color: "#dbe6ff",
+        tickfont: { size: 12 },
+        titlefont: { size: 13 },
+        gridcolor: "rgba(98,246,255,0.14)",
+        zerolinecolor: "rgba(125,158,255,0.18)"
+      }
+    },
+    { displayModeBar: false, responsive: true }
+  );
+}
+
+function renderPieChart(report) {
+  if (!window.Plotly || !probPieChartEl) return;
+  const labels = report.class_probabilities.map((x) => x.class);
+  const probs = report.class_probabilities.map((x) => x.probability);
+
+  Plotly.newPlot(
+    probPieChartEl,
+    [{
+      labels,
+      values: probs,
+      type: "pie",
+      hole: 0.55,
+      marker: { colors: ["#62f6ff", "#7c5cff", "#b9ff79"] },
+      textinfo: "label+percent",
+      textfont: { color: "#f7fbff", size: 14 },
+      textposition: "outside",
+      outsidetextfont: { color: "#f7fbff", size: 13 },
+      sort: false,
+      direction: "clockwise",
+      pull: [0.03, 0.02, 0.02],
+      automargin: true
+    }],
+    {
+      title: { text: "Class Share After Answers", font: { color: "#f7fbff", size: 22 } },
+      paper_bgcolor: "#0b1730",
+      plot_bgcolor: "#0f1d3f",
+      font: { color: "#f7fbff", size: 14 },
+      margin: { l: 24, r: 24, b: 64, t: 58 },
+      showlegend: true,
+      legend: {
+        orientation: "h",
+        x: 0.02,
+        y: -0.1,
+        font: { color: "#dbe6ff", size: 12 }
+      }
+    },
+    { displayModeBar: false, responsive: true }
+  );
+}
+
+function renderAllCharts(report) {
+  renderChart(report);
+  renderTrendChart(report);
+  renderPieChart(report);
+}
+
+async function buildPdfChartImage(report, kind = "bar") {
   if (!window.Plotly) return null;
   const exportNode = document.createElement("div");
   exportNode.style.position = "fixed";
   exportNode.style.left = "-99999px";
   exportNode.style.top = "0";
-  exportNode.style.width = "900px";
-  exportNode.style.height = "420px";
+  exportNode.style.width = "1200px";
+  exportNode.style.height = "560px";
   document.body.appendChild(exportNode);
 
   try {
     const labels = report.class_probabilities.map((x) => x.class);
     const probs = report.class_probabilities.map((x) => x.probability);
-    await Plotly.newPlot(
-      exportNode,
-      [{
+    let data;
+    let layout;
+    if (kind === "line") {
+      const profile = report.answer_profile || [
+        { label: "Imaging Signal", value: report.confidence },
+        { label: "Symptom Load", value: 30 },
+        { label: "Mobility Stress", value: 30 },
+        { label: "Fracture Risk", value: 20 }
+      ];
+      const labels = profile.map((x) => x.label);
+      const probs = profile.map((x) => x.value);
+      const baseline = [25, 35, 35, 28];
+      data = [
+        {
+          x: labels,
+          y: baseline,
+          type: "scatter",
+          mode: "lines",
+          line: { color: "#8fa1d2", width: 3, dash: "dot" },
+          name: "Baseline"
+        },
+        {
+          x: labels,
+          y: probs,
+          type: "scatter",
+          mode: "lines+markers",
+          line: { color: "#6d4aff", width: 5, shape: "spline", smoothing: 1.1 },
+          marker: { color: "#62f6ff", size: 12, line: { color: "#ffffff", width: 2.5 } },
+          fill: "tozeroy",
+          fillcolor: "rgba(98, 246, 255, 0.22)",
+          name: "Model trend"
+        }
+      ];
+      layout = {
+        title: { text: "Risk Trend From Answers", font: { family: "Times New Roman, serif", size: 24, color: "#111111" } },
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
+        font: { family: "Times New Roman, serif", size: 14, color: "#111111" },
+        margin: { l: 88, r: 36, b: 80, t: 84 },
+        legend: { orientation: "h", x: 0, y: 1.12 },
+        xaxis: { color: "#111111" },
+        yaxis: {
+          title: "Risk Index",
+          range: [0, 100],
+          color: "#111111",
+          gridcolor: "rgba(0,0,0,0.10)",
+          zerolinecolor: "rgba(0,0,0,0.15)"
+        }
+      };
+    } else if (kind === "pie") {
+      data = [{
+        labels,
+        values: probs,
+        type: "pie",
+        hole: 0.55,
+        marker: { colors: ["#62f6ff", "#7c5cff", "#b9ff79"] },
+        textinfo: "label+percent",
+        textfont: { color: "#111111", size: 14 },
+        textposition: "outside",
+        outsidetextfont: { color: "#111111", size: 13 },
+        sort: false,
+        direction: "clockwise",
+        pull: [0.03, 0.02, 0.02]
+      }];
+      layout = {
+        title: { text: "Class Share After Answers", font: { family: "Times New Roman, serif", size: 24, color: "#111111" } },
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
+        font: { family: "Times New Roman, serif", size: 14, color: "#111111" },
+        margin: { l: 36, r: 36, b: 70, t: 84 },
+        showlegend: true,
+        legend: { orientation: "h", x: 0.05, y: -0.05 }
+      };
+    } else {
+      data = [{
         x: labels,
         y: probs,
         type: "bar",
         marker: { color: PDF_CHART_COLORS },
         text: probs.map((p) => `${p}%`),
         textposition: "outside"
-      }],
-      {
-        title: { text: "Class Confidence", font: { family: "Times New Roman, serif", size: 22, color: "#111111" } },
+      }];
+      layout = {
+        title: { text: "Class Confidence", font: { family: "Times New Roman, serif", size: 24, color: "#111111" } },
         paper_bgcolor: "#ffffff",
         plot_bgcolor: "#ffffff",
         font: { family: "Times New Roman, serif", size: 14, color: "#111111" },
-        margin: { l: 70, r: 30, b: 60, t: 70 },
+        margin: { l: 88, r: 36, b: 80, t: 84 },
         xaxis: { color: "#111111" },
         yaxis: {
           title: "Probability (%)",
@@ -242,10 +565,10 @@ async function buildPdfChartImage(report) {
           gridcolor: "rgba(0,0,0,0.10)",
           zerolinecolor: "rgba(0,0,0,0.15)"
         }
-      },
-      { displayModeBar: false, responsive: false }
-    );
-    return await Plotly.toImage(exportNode, { format: "png", width: 900, height: 420, scale: 2 });
+      };
+    }
+    await Plotly.newPlot(exportNode, data, layout, { displayModeBar: false, responsive: false });
+    return await Plotly.toImage(exportNode, { format: "png", width: 1400, height: 700, scale: 3 });
   } finally {
     Plotly.purge(exportNode);
     exportNode.remove();
@@ -313,9 +636,25 @@ function renderReport(data) {
     urgentAlertEl.hidden = !urgent;
     safeSetText(urgentAlertEl, urgent || "");
   }
-  renderChart(data.report);
+  renderAllCharts(data.report);
   updateModelMessaging(data.report);
   safeSetText(insightPanelEl, buildImprovements(data.report));
+  if (summaryTextEl) {
+    safeSetText(summaryTextEl, data.report.guidance?.summary || "No clinical summary is available.");
+  }
+  if (examBadgeEl) {
+    const examRecommended = data.report.guidance?.exam_recommended ? "Exam Recommended" : "Exam Optional";
+    safeSetText(examBadgeEl, examRecommended);
+    examBadgeEl.dataset.tone = data.report.guidance?.exam_recommended ? "alert" : "ok";
+  }
+  safeSetText(riskLevelCardEl, data.report.severity_level || "-");
+  safeSetText(confidenceCardEl, `${data.report.confidence}%`);
+  safeSetText(examCardEl, data.report.guidance?.exam_recommended ? "Yes" : "No");
+  safeSetText(sourceCardEl, data.report.model_info?.inference_source || "-");
+  renderDashboardList(doctorListEl, data.report.guidance?.doctor_to_visit, "No doctor guidance is available.");
+  renderDashboardList(testsListEl, data.report.guidance?.tests_to_discuss, "No suggested tests are available.");
+  renderDashboardList(foodsListEl, data.report.guidance?.foods_to_eat, "No food guidance is available.");
+  renderDashboardList(stepsListEl, data.report.guidance?.next_steps, "No next-step guidance is available.");
   setStatus("Analysis complete. Review the report and export if needed.", "success");
 
   const lines = [
@@ -367,6 +706,16 @@ function renderReport(data) {
     assistantThreadEl.innerHTML = "";
     appendAssistantMessage("Analysis loaded. Ask a question about the report.");
   }
+}
+
+function finalizeAnalysisWithAnswers() {
+  if (!pendingAnalysis) return;
+  const answers = getFollowupAnswers();
+  const answeredReport = deriveAnsweredReport(pendingAnalysis, answers);
+  latestAnalysis = answeredReport;
+  if (followupPanelEl) followupPanelEl.hidden = true;
+  if (reportPanelEl) reportPanelEl.hidden = false;
+  renderReport({ ok: true, report: answeredReport });
 }
 
 function appendChatMessage(role, text) {
@@ -516,16 +865,45 @@ async function downloadPdfReport() {
   };
 
   doc.setFont("times", "bold");
-  doc.setFontSize(22);
+  doc.setFontSize(24);
+  doc.setTextColor(0, 0, 0);
   doc.text("Knee Disease Identifier Report", left, y);
   y += 24;
-  addParagraph("Screening summary generated from the uploaded knee X-ray.", {
+  addParagraph("Patient health dashboard generated from the uploaded knee X-ray.", {
     style: "italic",
     size: 11,
     color: [85, 85, 85],
     lineHeight: 14,
     after: 8,
   });
+
+  addSectionHeader("Patient Health Dashboard");
+  doc.setDrawColor(190, 190, 190);
+  doc.setFillColor(249, 249, 249);
+  const dashCardWidth = (contentWidth - 18) / 2;
+  const dashCardHeight = 56;
+  const dashboardCards = [
+    { label: "Risk Level", value: latestAnalysis.severity_level },
+    { label: "Model Confidence", value: `${latestAnalysis.confidence}%` },
+    { label: "Exam Recommended", value: latestAnalysis.guidance?.exam_recommended ? "Yes" : "No" },
+    { label: "Inference Mode", value: latestAnalysis.model_info.inference_source },
+  ];
+  dashboardCards.forEach((card, index) => {
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    const x = left + col * (dashCardWidth + 18);
+    const yOffset = y + row * (dashCardHeight + 12);
+    doc.roundedRect(x, yOffset, dashCardWidth, dashCardHeight, 10, 10, "FD");
+    doc.setFont("times", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(90, 90, 90);
+    doc.text(card.label, x + 12, yOffset + 18);
+    doc.setFont("times", "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(15, 15, 15);
+    doc.text(card.value, x + 12, yOffset + 40);
+  });
+  y += 2 * (dashCardHeight + 12) + 8;
 
   addSectionHeader("Core Findings");
   addKeyValueRows([
@@ -550,7 +928,7 @@ async function downloadPdfReport() {
       addParagraph(`URGENT: ${latestAnalysis.guidance.urgent_banner}`, {
         style: "bold",
         size: 12,
-        color: [180, 0, 0],
+        color: [185, 24, 24],
         lineHeight: 17,
         after: 8,
       });
@@ -591,14 +969,15 @@ async function downloadPdfReport() {
   }
 
   try {
-    const imgData = await buildPdfChartImage(latestAnalysis);
+    const imgData = await buildPdfChartImage(latestAnalysis, "bar");
     if (imgData) {
-      ensureSpace(290);
+      ensureSpace(330);
       addSectionHeader("Confidence Chart");
+      doc.setFillColor(255, 255, 255);
       doc.setDrawColor(180, 180, 180);
-      doc.rect(left, y - 4, contentWidth, 230);
-      doc.addImage(imgData, "PNG", left + 6, y + 2, contentWidth - 12, 218);
-      y += 240;
+      doc.roundedRect(left, y - 4, contentWidth, 260, 14, 14, "FD");
+      doc.addImage(imgData, "PNG", left + 12, y + 10, contentWidth - 24, 238);
+      y += 272;
     } else {
       addSectionHeader("Confidence Chart");
       addParagraph("Chart snapshot unavailable.");
@@ -606,6 +985,29 @@ async function downloadPdfReport() {
   } catch (_err) {
     addSectionHeader("Confidence Chart");
     addParagraph("Chart snapshot unavailable.");
+  }
+
+  try {
+    const lineImg = await buildPdfChartImage(latestAnalysis, "line");
+    const pieImg = await buildPdfChartImage(latestAnalysis, "pie");
+    if (lineImg || pieImg) {
+      ensureSpace(340);
+      addSectionHeader("Additional Charts");
+      const halfWidth = (contentWidth - 18) / 2;
+      if (lineImg) {
+        doc.setDrawColor(190, 190, 190);
+        doc.roundedRect(left, y, halfWidth, 220, 12, 12, "S");
+        doc.addImage(lineImg, "PNG", left + 8, y + 8, halfWidth - 16, 204);
+      }
+      if (pieImg) {
+        doc.setDrawColor(190, 190, 190);
+        doc.roundedRect(left + halfWidth + 18, y, halfWidth, 220, 12, 12, "S");
+        doc.addImage(pieImg, "PNG", left + halfWidth + 26, y + 8, halfWidth - 16, 204);
+      }
+      y += 236;
+    }
+  } catch (_err) {
+    // Keep PDF export resilient if supplementary charts fail.
   }
 
   addSectionHeader("Signature");
@@ -700,6 +1102,12 @@ if (assistantQuestionEl) {
   });
 }
 
+if (followupSubmitBtnEl) {
+  followupSubmitBtnEl.addEventListener("click", () => {
+    finalizeAnalysisWithAnswers();
+  });
+}
+
 analyzeBtnEl.addEventListener("click", async () => {
   const file = analyzeFileEl.files && analyzeFileEl.files[0];
   const error = validateFile(file);
@@ -717,7 +1125,15 @@ analyzeBtnEl.addEventListener("click", async () => {
   try {
     const res = await fetch("/api/analyze", { method: "POST", body: form });
     const data = await res.json();
-    renderReport(data);
+    if (!data || !data.ok || !data.report) {
+      renderReport(data);
+      return;
+    }
+    pendingAnalysis = data.report;
+    latestAnalysis = null;
+    renderFollowupQuestions(data.report);
+    safeSetText(reportBoxEl, "AI follow-up questions are ready. Answer them to generate the dashboard.");
+    setStatus("AI follow-up ready. Answer the patient questions to build the final dashboard.", "success");
   } catch (err) {
     safeSetText(reportBoxEl, `Request failed: ${String(err)}`);
     setStatus("Request failed. Check your connection or server status.", "error");
