@@ -50,7 +50,10 @@ const heroGridEl = heroVisualEl ? heroVisualEl.querySelector(".hero-grid-lines")
 let latestAnalysis = null;
 let pendingAnalysis = null;
 let assistantHistory = [];
-const PDF_CHART_COLORS = ["#66d9d0", "#90aeb6", "#1f2f36"];
+
+// FIX: Use clean light colors for PDF bar chart — no dark colors that cause black backgrounds
+const PDF_CHART_COLORS = ["#2196a8", "#6e8f97", "#aac4cc"];
+
 const FOLLOWUP_QUESTIONS = [
   {
     id: "pain_level",
@@ -165,7 +168,7 @@ function renderFollowupQuestions(report) {
   if (reportPanelEl) reportPanelEl.hidden = true;
   safeSetText(followupIntroEl, buildFollowupSummary(report));
   followupQuestionsEl.innerHTML = "";
-  FOLLOWUP_QUESTIONS.forEach((question, index) => {
+  FOLLOWUP_QUESTIONS.forEach((question) => {
     const wrap = document.createElement("div");
     wrap.className = "followup-question";
     const label = document.createElement("label");
@@ -462,8 +465,10 @@ async function buildPdfChartImage(report, kind = "bar") {
   exportNode.style.position = "fixed";
   exportNode.style.left = "-99999px";
   exportNode.style.top = "0";
-  exportNode.style.width = "1200px";
-  exportNode.style.height = "560px";
+  // FIX: Match export node size to toImage size for sharp rendering
+  exportNode.style.width = "900px";
+  exportNode.style.height = "480px";
+  exportNode.style.background = "#ffffff";
   document.body.appendChild(exportNode);
 
   try {
@@ -471,6 +476,7 @@ async function buildPdfChartImage(report, kind = "bar") {
     const probs = report.class_probabilities.map((x) => x.probability);
     let data;
     let layout;
+
     if (kind === "line") {
       const profile = report.answer_profile || [
         { label: "Imaging Signal", value: report.confidence },
@@ -478,44 +484,47 @@ async function buildPdfChartImage(report, kind = "bar") {
         { label: "Mobility Stress", value: 30 },
         { label: "Fracture Risk", value: 20 }
       ];
-      const labels = profile.map((x) => x.label);
-      const probs = profile.map((x) => x.value);
+      const lineLabels = profile.map((x) => x.label);
+      const lineProbs = profile.map((x) => x.value);
       const baseline = [25, 35, 35, 28];
       data = [
         {
-          x: labels,
+          x: lineLabels,
           y: baseline,
           type: "scatter",
           mode: "lines",
-          line: { color: "#8fa1d2", width: 3, dash: "dot" },
+          // FIX: Use darker visible color for PDF white background
+          line: { color: "#666666", width: 2, dash: "dot" },
           name: "Baseline"
         },
         {
-          x: labels,
-          y: probs,
+          x: lineLabels,
+          y: lineProbs,
           type: "scatter",
           mode: "lines+markers",
-          line: { color: "#6d4aff", width: 5, shape: "spline", smoothing: 1.1 },
-          marker: { color: "#62f6ff", size: 12, line: { color: "#ffffff", width: 2.5 } },
+          // FIX: Use darker blue for PDF white background
+          line: { color: "#2b5fa8", width: 3, shape: "spline", smoothing: 1.1 },
+          marker: { color: "#1a8fa0", size: 10, line: { color: "#000000", width: 1.5 } },
           fill: "tozeroy",
-          fillcolor: "rgba(98, 246, 255, 0.22)",
+          fillcolor: "rgba(33, 150, 168, 0.18)",
           name: "Model trend"
         }
       ];
       layout = {
-        title: { text: "Risk Trend From Answers", font: { family: "Times New Roman, serif", size: 24, color: "#111111" } },
+        title: { text: "Risk Trend From Answers", font: { family: "Times New Roman, serif", size: 20, color: "#111111" } },
         paper_bgcolor: "#ffffff",
-        plot_bgcolor: "#ffffff",
-        font: { family: "Times New Roman, serif", size: 14, color: "#111111" },
-        margin: { l: 88, r: 36, b: 80, t: 84 },
-        legend: { orientation: "h", x: 0, y: 1.12 },
-        xaxis: { color: "#111111" },
+        plot_bgcolor: "#f9f9f9",
+        font: { family: "Times New Roman, serif", size: 13, color: "#111111" },
+        margin: { l: 72, r: 32, b: 72, t: 72 },
+        legend: { orientation: "h", x: 0, y: 1.1, font: { color: "#111111", size: 12 } },
+        xaxis: { color: "#111111", gridcolor: "rgba(0,0,0,0.08)", tickfont: { color: "#111111" } },
         yaxis: {
           title: "Risk Index",
           range: [0, 100],
           color: "#111111",
           gridcolor: "rgba(0,0,0,0.10)",
-          zerolinecolor: "rgba(0,0,0,0.15)"
+          zerolinecolor: "rgba(0,0,0,0.15)",
+          tickfont: { color: "#111111" }
         }
       };
     } else if (kind === "pie") {
@@ -523,52 +532,67 @@ async function buildPdfChartImage(report, kind = "bar") {
         labels,
         values: probs,
         type: "pie",
-        hole: 0.55,
-        marker: { colors: ["#62f6ff", "#7c5cff", "#b9ff79"] },
+        hole: 0.5,
+        // FIX: Use colors that are visible on white background
+        marker: { colors: ["#2196a8", "#5c4db1", "#5aaa3e"], line: { color: "#ffffff", width: 2 } },
         textinfo: "label+percent",
-        textfont: { color: "#111111", size: 14 },
+        textfont: { color: "#111111", size: 13 },
         textposition: "outside",
-        outsidetextfont: { color: "#111111", size: 13 },
+        outsidetextfont: { color: "#111111", size: 12 },
         sort: false,
         direction: "clockwise",
         pull: [0.03, 0.02, 0.02]
       }];
       layout = {
-        title: { text: "Class Share After Answers", font: { family: "Times New Roman, serif", size: 24, color: "#111111" } },
+        title: { text: "Class Share After Answers", font: { family: "Times New Roman, serif", size: 20, color: "#111111" } },
         paper_bgcolor: "#ffffff",
         plot_bgcolor: "#ffffff",
-        font: { family: "Times New Roman, serif", size: 14, color: "#111111" },
-        margin: { l: 36, r: 36, b: 70, t: 84 },
+        font: { family: "Times New Roman, serif", size: 13, color: "#111111" },
+        margin: { l: 32, r: 32, b: 64, t: 72 },
         showlegend: true,
-        legend: { orientation: "h", x: 0.05, y: -0.05 }
+        legend: { orientation: "h", x: 0.05, y: -0.08, font: { color: "#111111", size: 12 } }
       };
     } else {
+      // Bar chart — keep PNG format as it was already working well
       data = [{
         x: labels,
         y: probs,
         type: "bar",
-        marker: { color: PDF_CHART_COLORS },
+        // FIX: Use PDF_CHART_COLORS which are now clean light colors
+        marker: {
+          color: PDF_CHART_COLORS,
+          line: { color: "#888888", width: 1 }
+        },
         text: probs.map((p) => `${p}%`),
-        textposition: "outside"
+        textposition: "outside",
+        textfont: { color: "#111111", size: 13 }
       }];
       layout = {
-        title: { text: "Class Confidence", font: { family: "Times New Roman, serif", size: 24, color: "#111111" } },
+        title: { text: "Class Confidence", font: { family: "Times New Roman, serif", size: 20, color: "#111111" } },
         paper_bgcolor: "#ffffff",
-        plot_bgcolor: "#ffffff",
-        font: { family: "Times New Roman, serif", size: 14, color: "#111111" },
-        margin: { l: 88, r: 36, b: 80, t: 84 },
-        xaxis: { color: "#111111" },
+        plot_bgcolor: "#f9f9f9",
+        font: { family: "Times New Roman, serif", size: 13, color: "#111111" },
+        margin: { l: 72, r: 32, b: 72, t: 72 },
+        xaxis: { color: "#111111", tickfont: { color: "#111111" } },
         yaxis: {
           title: "Probability (%)",
-          range: [0, 100],
+          range: [0, 110],
           color: "#111111",
           gridcolor: "rgba(0,0,0,0.10)",
-          zerolinecolor: "rgba(0,0,0,0.15)"
+          zerolinecolor: "rgba(0,0,0,0.15)",
+          tickfont: { color: "#111111" }
         }
       };
     }
+
     await Plotly.newPlot(exportNode, data, layout, { displayModeBar: false, responsive: false });
-    return await Plotly.toImage(exportNode, { format: "png", width: 1400, height: 700, scale: 3 });
+
+    // FIX: Bar chart stays PNG (was working), line/pie use PNG too but at smaller size to reduce file size
+    const format = "png";
+    const width = kind === "bar" ? 900 : 800;
+    const height = kind === "bar" ? 480 : 440;
+    // FIX: scale 2 instead of 3 — still sharp but much smaller file size
+    return await Plotly.toImage(exportNode, { format, width, height, scale: 2 });
   } finally {
     Plotly.purge(exportNode);
     exportNode.remove();
@@ -686,7 +710,6 @@ function renderReport(data) {
     lines.push("");
     lines.push("Tests To Discuss:");
     (data.report.guidance.tests_to_discuss || []).forEach((item) => lines.push(`- ${item}`));
-    lines.push("");
     lines.push("");
     lines.push("Foods To Focus On:");
     (data.report.guidance.foods_to_eat || []).forEach((item) => lines.push(`- ${item}`));
@@ -823,6 +846,7 @@ async function downloadPdfReport() {
       y += lineHeight;
     });
     y += opts.after || 2;
+    // FIX: Always reset text color to pure black after every paragraph
     doc.setTextColor(0, 0, 0);
   };
 
@@ -831,6 +855,7 @@ async function downloadPdfReport() {
       ensureSpace(18);
       doc.setFont("times", opts.style || "normal");
       doc.setFontSize(opts.size || 11.5);
+      // FIX: Always explicitly set black text for bullet lists
       doc.setTextColor(0, 0, 0);
       doc.text("-", left, y);
       const lines = doc.splitTextToSize(item, contentWidth - 14);
@@ -846,30 +871,38 @@ async function downloadPdfReport() {
 
   const addSectionHeader = (title) => {
     ensureSpace(34);
-    doc.setFillColor(245, 245, 245);
-    doc.setDrawColor(160, 160, 160);
+    doc.setFillColor(240, 240, 240);
+    doc.setDrawColor(180, 180, 180);
     doc.roundedRect(left - 10, y - 16, contentWidth + 20, 24, 7, 7, "FD");
     doc.setFont("times", "bold");
     doc.setFontSize(14);
+    // FIX: Explicitly set dark text for section headers
     doc.setTextColor(10, 10, 10);
     doc.text(title, left, y);
+    // FIX: Reset to black after header
     doc.setTextColor(0, 0, 0);
     y += 18;
   };
 
   const addKeyValueRows = (rows) => {
     rows.forEach((row) => {
+      // FIX: Reset color before each row
+      doc.setTextColor(0, 0, 0);
       addParagraph(`${row.label}: ${row.value}`, { size: 11.5, lineHeight: 15, after: 1 });
     });
     y += 4;
   };
+
+  // FIX: Set white page background explicitly
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, pageWidth, pageHeight, "F");
 
   doc.setFont("times", "bold");
   doc.setFontSize(24);
   doc.setTextColor(0, 0, 0);
   doc.text("Knee Disease Identifier Report", left, y);
   y += 24;
-  addParagraph("Patient health dashboard generated from the uploaded knee X-ray.", {
+  addParagraph("Screening summary generated from the uploaded knee X-ray.", {
     style: "italic",
     size: 11,
     color: [85, 85, 85],
@@ -878,8 +911,8 @@ async function downloadPdfReport() {
   });
 
   addSectionHeader("Patient Health Dashboard");
-  doc.setDrawColor(190, 190, 190);
-  doc.setFillColor(249, 249, 249);
+  doc.setDrawColor(180, 180, 180);
+  doc.setFillColor(248, 248, 248);
   const dashCardWidth = (contentWidth - 18) / 2;
   const dashCardHeight = 56;
   const dashboardCards = [
@@ -893,17 +926,21 @@ async function downloadPdfReport() {
     const row = Math.floor(index / 2);
     const x = left + col * (dashCardWidth + 18);
     const yOffset = y + row * (dashCardHeight + 12);
+    doc.setFillColor(248, 248, 248);
+    doc.setDrawColor(180, 180, 180);
     doc.roundedRect(x, yOffset, dashCardWidth, dashCardHeight, 10, 10, "FD");
     doc.setFont("times", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(90, 90, 90);
+    doc.setTextColor(80, 80, 80);
     doc.text(card.label, x + 12, yOffset + 18);
     doc.setFont("times", "bold");
     doc.setFontSize(15);
-    doc.setTextColor(15, 15, 15);
+    doc.setTextColor(10, 10, 10);
     doc.text(card.value, x + 12, yOffset + 40);
   });
   y += 2 * (dashCardHeight + 12) + 8;
+  // FIX: Reset after dashboard cards
+  doc.setTextColor(0, 0, 0);
 
   addSectionHeader("Core Findings");
   addKeyValueRows([
@@ -941,22 +978,22 @@ async function downloadPdfReport() {
       { label: "Medical Examination Recommended", value: latestAnalysis.guidance.exam_recommended ? "Yes" : "No" },
     ]);
 
-    addParagraph("Doctor To Visit", { style: "bold", size: 12, after: 4 });
-    addBulletList(latestAnalysis.guidance.doctor_to_visit || []);
+    addParagraph("Doctor To Visit", { style: "bold", size: 12, after: 4, color: [0, 0, 0] });
+    addBulletList(latestAnalysis.guidance.doctor_to_visit || ["See a primary care clinician."]);
 
-    addParagraph("Tests To Discuss", { style: "bold", size: 12, after: 4 });
-    addBulletList(latestAnalysis.guidance.tests_to_discuss || []);
+    addParagraph("Tests To Discuss", { style: "bold", size: 12, after: 4, color: [0, 0, 0] });
+    addBulletList(latestAnalysis.guidance.tests_to_discuss || ["Discuss appropriate testing with a clinician."]);
 
-    addParagraph("Foods To Focus On", { style: "bold", size: 12, after: 4 });
+    addParagraph("Foods To Focus On", { style: "bold", size: 12, after: 4, color: [0, 0, 0] });
     addBulletList(latestAnalysis.guidance.foods_to_eat || []);
 
-    addParagraph("Habits To Focus On", { style: "bold", size: 12, after: 4 });
+    addParagraph("Habits To Focus On", { style: "bold", size: 12, after: 4, color: [0, 0, 0] });
     addBulletList(latestAnalysis.guidance.habits || []);
 
-    addParagraph("Suggested Next Steps", { style: "bold", size: 12, after: 4 });
+    addParagraph("Suggested Next Steps", { style: "bold", size: 12, after: 4, color: [0, 0, 0] });
     addBulletList(latestAnalysis.guidance.next_steps || []);
 
-    addParagraph("When To Seek Care", { style: "bold", size: 12, after: 4 });
+    addParagraph("When To Seek Care", { style: "bold", size: 12, after: 4, color: [0, 0, 0] });
     addBulletList(latestAnalysis.guidance.when_to_seek_care || []);
 
     addParagraph(`Disclaimer: ${latestAnalysis.guidance.disclaimer || latestAnalysis.note}`, {
@@ -968,16 +1005,17 @@ async function downloadPdfReport() {
     });
   }
 
+  // Bar chart — PNG, good quality
   try {
     const imgData = await buildPdfChartImage(latestAnalysis, "bar");
     if (imgData) {
-      ensureSpace(330);
+      ensureSpace(300);
       addSectionHeader("Confidence Chart");
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(180, 180, 180);
-      doc.roundedRect(left, y - 4, contentWidth, 260, 14, 14, "FD");
-      doc.addImage(imgData, "PNG", left + 12, y + 10, contentWidth - 24, 238);
-      y += 272;
+      doc.roundedRect(left, y - 4, contentWidth, 248, 12, 12, "FD");
+      doc.addImage(imgData, "PNG", left + 10, y + 6, contentWidth - 20, 230);
+      y += 258;
     } else {
       addSectionHeader("Confidence Chart");
       addParagraph("Chart snapshot unavailable.");
@@ -987,24 +1025,27 @@ async function downloadPdfReport() {
     addParagraph("Chart snapshot unavailable.");
   }
 
+  // Line and Pie charts — PNG, smaller size
   try {
     const lineImg = await buildPdfChartImage(latestAnalysis, "line");
     const pieImg = await buildPdfChartImage(latestAnalysis, "pie");
     if (lineImg || pieImg) {
-      ensureSpace(340);
+      ensureSpace(300);
       addSectionHeader("Additional Charts");
-      const halfWidth = (contentWidth - 18) / 2;
+      const halfWidth = (contentWidth - 16) / 2;
       if (lineImg) {
-        doc.setDrawColor(190, 190, 190);
-        doc.roundedRect(left, y, halfWidth, 220, 12, 12, "S");
-        doc.addImage(lineImg, "PNG", left + 8, y + 8, halfWidth - 16, 204);
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(180, 180, 180);
+        doc.roundedRect(left, y, halfWidth, 210, 10, 10, "FD");
+        doc.addImage(lineImg, "PNG", left + 6, y + 6, halfWidth - 12, 198);
       }
       if (pieImg) {
-        doc.setDrawColor(190, 190, 190);
-        doc.roundedRect(left + halfWidth + 18, y, halfWidth, 220, 12, 12, "S");
-        doc.addImage(pieImg, "PNG", left + halfWidth + 26, y + 8, halfWidth - 16, 204);
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(180, 180, 180);
+        doc.roundedRect(left + halfWidth + 16, y, halfWidth, 210, 10, 10, "FD");
+        doc.addImage(pieImg, "PNG", left + halfWidth + 22, y + 6, halfWidth - 12, 198);
       }
-      y += 236;
+      y += 222;
     }
   } catch (_err) {
     // Keep PDF export resilient if supplementary charts fail.
