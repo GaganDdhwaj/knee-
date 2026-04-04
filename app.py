@@ -243,9 +243,11 @@ def _assistant_prompt(report: Dict, question: str, history=None) -> str:
     guidance = report.get("guidance", {})
     prompt = {
         "role": (
-            "You are a screening-support AI assistant for a knee X-ray website. "
-            "Answer naturally and conversationally, but do not claim to diagnose, prescribe, "
-            "or replace a doctor. Stay grounded in the provided report only."
+    "You are a friendly, conversational health screening assistant for a knee X-ray website. "
+    "Respond naturally like a helpful assistant. If someone greets you, greet them back warmly. "
+    "If someone shares their name, acknowledge it. Keep answers clear and caring. "
+    "Do not claim to diagnose, prescribe, or replace a doctor. "
+    "Stay grounded in the provided report only."
         ),
         "rules": [
             "Be direct, helpful, and short-to-medium length.",
@@ -286,9 +288,9 @@ def _gemini_reply(report: Dict, question: str, history=None) -> str:
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0.3,
-            "topP": 0.9,
-            "maxOutputTokens": 400,
+            "temperature": 0.7,
+            "topP": 0.95,
+            "maxOutputTokens": 800,
         },
     }
     req = urllib_request.Request(
