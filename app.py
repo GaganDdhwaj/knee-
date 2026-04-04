@@ -24,7 +24,7 @@ _MODEL = None
 CHAT_MEMORY = {}
 
 # =========================
-# PROMPT (SMART + MULTI LANG)
+# PROMPT
 # =========================
 def _assistant_prompt(report: Dict, question: str, history=None) -> str:
     history = history or []
@@ -33,11 +33,10 @@ def _assistant_prompt(report: Dict, question: str, history=None) -> str:
         [f"{h['role']}: {h['content']}" for h in history[-6:]]
     )
 
-    # 🌍 Language detection
     q = question.lower()
-    if "hindi" in q or "हिंदी" in q:
+    if "hindi" in q:
         lang = "Respond in Hindi."
-    elif "telugu" in q or "తెలుగు" in q:
+    elif "telugu" in q:
         lang = "Respond in Telugu."
     else:
         lang = "Respond in English."
@@ -45,25 +44,20 @@ def _assistant_prompt(report: Dict, question: str, history=None) -> str:
     return f"""
 You are a friendly AI health assistant.
 
-Explain knee X-ray results like a doctor but simple.
+Explain knee X-ray results simply like a doctor.
 
 Report:
 - Condition: {report.get("predicted_class")}
 - Confidence: {report.get("confidence")}%
 - Severity: {report.get("severity_level")}
 
-Guidance:
-{report.get("guidance", {}).get("summary", "")}
-
 Conversation:
 {chat_context}
 
 Rules:
-- Be human and friendly
-- Use simple explanations
-- Use bullet points if needed
+- Be simple and clear
+- Be friendly
 - Do NOT act as final doctor
-- Help calmly
 
 {lang}
 
@@ -71,7 +65,7 @@ User: {question}
 """
 
 # =========================
-# GEMINI CALL (FIXED)
+# GEMINI
 # =========================
 def _gemini_reply(report: Dict, question: str, history=None) -> str:
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -112,18 +106,18 @@ def _gemini_reply(report: Dict, question: str, history=None) -> str:
         raise RuntimeError("Invalid Gemini response")
 
 # =========================
-# FALLBACK (SMARTER)
+# FALLBACK
 # =========================
 def _assistant_reply(report: Dict, question: str, history=None) -> str:
     q = (question or "").lower()
 
     if q in ["hi", "hello", "hey"]:
-        return "Hello 👋 How can I help you with your report?"
+        return "Hello 👋 How can I help you?"
 
-    return "I couldn't process that fully. Please ask clearly about your report."
+    return "Please ask about your report clearly."
 
 # =========================
-# MODEL LOADING
+# MODEL LOAD
 # =========================
 def _load_model():
     global _MODEL
@@ -139,7 +133,7 @@ def _load_model():
         return None
 
 # =========================
-# IMAGE PREDICTION
+# PREDICT
 # =========================
 def _predict_image(image_path: Path):
     from PIL import Image
@@ -151,7 +145,7 @@ def _predict_image(image_path: Path):
     if model:
         pred = model.predict(np.expand_dims(arr, axis=0))[0]
     else:
-        pred = np.array([0.6, 0.3, 0.1])  # fallback
+        pred = np.array([0.6, 0.3, 0.1])
 
     idx = int(np.argmax(pred))
     confidence = float(pred[idx]) * 100
@@ -161,7 +155,7 @@ def _predict_image(image_path: Path):
         "confidence": round(confidence, 2),
         "severity_level": ["Low", "Medium", "High"][idx],
         "guidance": {
-            "summary": "AI-based screening result. Consult doctor for confirmation."
+            "summary": "AI screening result. Consult doctor for confirmation."
         }
     }
 
@@ -188,7 +182,7 @@ def analyze():
     return jsonify({"ok": True, "report": report})
 
 # =========================
-# MAIN ASSISTANT (PRO)
+# ASSISTANT (FIXED)
 # =========================
 @app.route("/api/assistant", methods=["POST"])
 def assistant():
@@ -198,7 +192,7 @@ def assistant():
     session_id = data.get("session_id", "default")
 
     if not report:
-        return {"error": "No report"}, 400
+        return jsonify({"error": "No report"}), 400
 
     history = CHAT_MEMORY.get(session_id, [])
 
@@ -215,22 +209,20 @@ def assistant():
     history.append({"role": "assistant", "content": reply})
     CHAT_MEMORY[session_id] = history[-10:]
 
-    return {
+    return jsonify({
         "ok": True,
         "reply": reply,
-        "source": source
-    }
+        "source": source,
+        "report": report   # ✅ THIS FIXES YOUR DASHBOARD
+    })
 
 # =========================
-# VOICE ENDPOINT
+# VOICE
 # =========================
 @app.route("/api/voice", methods=["POST"])
 def voice():
     text = request.json.get("text", "")
-    if not text:
-        return {"error": "No text"}, 400
-
-    return {"reply": text}
+    return jsonify({"ok": True, "reply": text})
 
 # =========================
 # RUN
