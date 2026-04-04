@@ -277,7 +277,7 @@ def _normalize_assistant_text(text: str) -> str:
 
 
 def _gemini_reply(report: Dict, question: str, history=None) -> str:
-    api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyC8d992qIyxvTNYRqO-qiKhMxOxQF-WnQ8").strip()
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("Missing GEMINI_API_KEY")
 
