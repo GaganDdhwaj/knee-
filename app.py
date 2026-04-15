@@ -101,19 +101,55 @@ def _assistant_reply(report: Dict, question: str, history=None) -> str:
 
     if q in {"hi", "hello", "hey"}:
         return "Hello. Ask me about the result, the doctor to visit, tests to discuss, foods to focus on, or urgent care signs."
-    if "doctor" in q:
+    sections = []
+
+    if any(word in q for word in ["what does this mean", "meaning", "result", "summary", "diagnosis", "condition"]):
+        sections.append(guidance.get("summary") or "This is a screening result and should be reviewed with a clinician.")
+
+    if any(word in q for word in ["doctor", "specialist", "who should i see", "visit"]):
         doctors = guidance.get("doctor_to_visit") or ["Primary care clinician"]
-        return "Doctor to visit:\n- " + "\n- ".join(doctors)
-    if "test" in q:
+        sections.append("Doctor to visit:\n- " + "\n- ".join(doctors))
+
+    if any(word in q for word in ["test", "scan", "dexa", "x-ray", "discuss"]):
         tests = guidance.get("tests_to_discuss") or ["Discuss appropriate testing with a clinician."]
-        return "Tests to discuss:\n- " + "\n- ".join(tests)
-    if "food" in q or "eat" in q or "diet" in q:
+        sections.append("Tests to discuss:\n- " + "\n- ".join(tests))
+
+    if any(word in q for word in ["food", "eat", "diet", "nutrition"]):
         foods = guidance.get("foods_to_eat") or ["Follow a balanced diet and discuss bone health with a clinician."]
-        return "Foods to focus on:\n- " + "\n- ".join(foods)
-    if "urgent" in q or "emergency" in q or "care" in q:
+        sections.append("Foods to focus on:\n- " + "\n- ".join(foods))
+
+    if any(word in q for word in ["habit", "exercise", "lifestyle", "walk", "movement"]):
+        habits = guidance.get("habits") or ["Follow safe movement and lifestyle guidance from a clinician."]
+        sections.append("Habits to focus on:\n- " + "\n- ".join(habits))
+
+    if any(word in q for word in ["next", "step", "what should i do", "do now", "plan"]):
+        steps = guidance.get("next_steps") or ["Arrange clinician review for tailored next steps."]
+        sections.append("Suggested next steps:\n- " + "\n- ".join(steps))
+
+    if any(word in q for word in ["urgent", "emergency", "care", "danger", "serious", "fracture"]):
+        urgent_banner = guidance.get("urgent_banner")
         signs = guidance.get("when_to_seek_care") or ["Seek urgent care for severe pain, deformity, or inability to bear weight."]
-        return "Urgent care signs:\n- " + "\n- ".join(signs)
-    return guidance.get("summary") or "Ask me something specific about the report."
+        urgent_block = []
+        if urgent_banner:
+            urgent_block.append(urgent_banner)
+        urgent_block.append("Urgent care signs:\n- " + "\n- ".join(signs))
+        sections.append("\n".join(urgent_block))
+
+    if "confidence" in q:
+        sections.append(guidance.get("confidence_note") or "Confidence should be interpreted together with image quality and clinical review.")
+
+    if "model" in q or "ai" in q:
+        sections.append(guidance.get("model_note") or "This is an AI screening output and not a final diagnosis.")
+
+    if not sections:
+        sections.append(guidance.get("summary") or "This is a screening result and should be reviewed clinically.")
+        if guidance.get("doctor_to_visit"):
+            sections.append("Doctor to visit:\n- " + "\n- ".join(guidance["doctor_to_visit"]))
+        if guidance.get("next_steps"):
+            sections.append("Suggested next steps:\n- " + "\n- ".join(guidance["next_steps"]))
+
+    sections.append(guidance.get("disclaimer") or "This is screening guidance only, not a diagnosis.")
+    return "\n\n".join(sections)
 
 
 def _build_guidance(predicted_class: str, confidence: float, source: str):
